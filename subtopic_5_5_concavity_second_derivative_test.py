@@ -1,19 +1,14 @@
 # subtopic_5_5_concavity_second_derivative_test.py
 # AQB Grade 12 AI Math Tutor — Subtopic 5.5: Concavity and 2nd Derivative Test
-# IMPORTANT:
-# - Provides the required render() entry point (fixes “missing render() function”).
-# - ONLY two tabs: Learn + Practice.
-# - NO sliders anywhere.
-# - All mathematical notation is rendered in LaTeX (no plain-text math).
-# - Tables are built as clean markdown tables (no overlap).
-# - Graphs are intentionally smaller (compact figsize).
-# - Black-board simulator: uses simulations.py if available; otherwise uses a safe fallback.
+# FIX APPLIED (ONLY): Blackboard fallback now renders LaTeX properly (no raw $$ ... $$ showing),
+# and the title line no longer shows a stray "{".
+# Everything else kept as-is.
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import streamlit as st
@@ -31,11 +26,9 @@ def _h3(title: str) -> None:
     st.markdown(f"### {title}")
 
 def _p(text: str) -> None:
-    # No math in plain text. If you need math, put it in _latex() or use $...$ inside markdown.
     st.markdown(text)
 
 def _latex(expr: str) -> None:
-    # Use st.latex for all displayed formulas / expressions.
     st.latex(expr)
 
 def _callout(title: str, body_lines: List[str]) -> None:
@@ -67,7 +60,6 @@ def _step(title: str) -> None:
     st.markdown(f"**{title}**")
 
 def _md_table(headers: List[str], rows: List[List[str]]) -> None:
-    # Clean markdown table (no overlap). Ensure any math in cells uses $...$.
     md = "| " + " | ".join(headers) + " |\n"
     md += "| " + " | ".join(["---"] * len(headers)) + " |\n"
     for r in rows:
@@ -75,7 +67,7 @@ def _md_table(headers: List[str], rows: List[List[str]]) -> None:
     st.markdown(md)
 
 def _small_plot(x: np.ndarray, y: np.ndarray, title: str, vlines: Optional[List[float]] = None) -> None:
-    fig = plt.figure(figsize=(6.2, 3.2), dpi=140)  # smaller than before (non-negotiable)
+    fig = plt.figure(figsize=(6.2, 3.2), dpi=140)
     ax = fig.add_subplot(111)
     ax.plot(x, y)
     ax.axhline(0, linewidth=1)
@@ -104,7 +96,6 @@ def _try_render_blackboard(lines_latex: List[str], height_px: int = 420) -> bool
     except Exception:
         return False
 
-    # Try a few common function names (keeps your simulations.py unchanged).
     candidates = [
         "render_blackboard",
         "render_blackboard_simulator",
@@ -117,7 +108,6 @@ def _try_render_blackboard(lines_latex: List[str], height_px: int = 420) -> bool
         fn = getattr(simulations, name, None)
         if callable(fn):
             try:
-                # Try multiple signatures safely.
                 try:
                     fn(lines_latex, height_px=height_px)
                 except TypeError:
@@ -132,28 +122,92 @@ def _try_render_blackboard(lines_latex: List[str], height_px: int = 420) -> bool
 
 def _fallback_blackboard(lines_latex: List[str], height_px: int = 420) -> None:
     """
-    Safe fallback if simulations.py function names are unknown.
+    FIXED fallback: renders LaTeX clearly on the board using KaTeX in the iframe
+    (so you NEVER see raw $$ ... $$ lines).
     No “next step” clicking; pressing Play shows the full solution on the same board.
     """
+    import html
     import streamlit.components.v1 as components
 
-    # Pre-render full content (no progressive steps) to avoid readability/scroll issues.
-    # This is a fallback only; the primary is simulations.py.
-    html_lines = []
-    for ln in lines_latex:
-        # KaTeX/MathJax rendering handled by Streamlit in markdown; but inside HTML we keep it readable.
-        # We therefore present as plain lines with LaTeX delimiters, then let MathJax render in iframe.
-        # Streamlit iframes do not automatically inject MathJax; keep it simple and readable.
-        html_lines.append(f"<div style='margin:8px 0; font-size:20px; line-height:1.35;'>{ln}</div>")
+    # Build board content: first line is a title (plain text), the rest are LaTeX block lines.
+    # We avoid any stray "{" by formatting cleanly.
+    parts: List[str] = []
+    if lines_latex:
+        title = lines_latex[0]
+        # If title is written as \textbf{...}, strip safely.
+        if title.startswith(r"\textbf{") and title.endswith("}"):
+            title = title[len(r"\textbf{"):-1]
+        title = title.replace(r"\\", "")
+        parts.append(f"<div class='bb-title'>{html.escape(title)}</div>")
+        for ln in lines_latex[1:]:
+            parts.append(f"<div class='bb-math'>$$ {html.escape(ln)} $$</div>")
 
-    html = f"""
-    <div style="height:{height_px}px; overflow:auto; background:#0b0f14; color:#e8eef7; border-radius:14px; padding:18px; border:1px solid rgba(255,255,255,0.08);">
-      <div style="font-weight:700; opacity:0.95; margin-bottom:10px;">Solution</div>
-      {"".join(html_lines)}
-      <div style="margin-top:10px; font-size:13px; opacity:0.7;">(If your board is not rendering math here, your simulations.py board will.)</div>
-    </div>
-    """
-    components.html(html, height=height_px + 10)
+    body = "\n".join(parts)
+
+    # KaTeX auto-render (CDN). This is self-contained inside the iframe.
+    html_doc = f"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <style>
+    body {{
+      margin: 0;
+      background: #0b0f14;
+      color: #e8eef7;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }}
+    .wrap {{
+      height: {height_px}px;
+      overflow: auto;
+      padding: 18px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-sizing: border-box;
+    }}
+    .bb-title {{
+      font-weight: 800;
+      font-size: 20px;
+      margin: 0 0 12px 0;
+      opacity: 0.95;
+    }}
+    .bb-math {{
+      font-size: 20px;
+      line-height: 1.35;
+      margin: 10px 0;
+    }}
+    /* Make KaTeX white on dark */
+    .katex {{ color: #e8eef7; }}
+    .katex .mord, .katex .mop, .katex .mbin, .katex .mrel, .katex .mopen, .katex .mclose, .katex .mpunct, .katex .minner {{
+      color: #e8eef7;
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrap" id="root">
+    {body}
+  </div>
+
+  <script>
+    window.addEventListener("load", () => {{
+      try {{
+        renderMathInElement(document.getElementById("root"), {{
+          delimiters: [
+            {{left: "$$", right: "$$", display: true}},
+            {{left: "\\\\(", right: "\\\\)", display: false}}
+          ],
+          throwOnError: false
+        }});
+      }} catch (e) {{}}
+    }});
+  </script>
+</body>
+</html>
+"""
+    components.html(html_doc, height=height_px + 10)
 
 
 # ----------------------------
@@ -229,7 +283,6 @@ def _worked_example_concavity_inflection() -> None:
     _p("Because concavity changes at $x=-\\tfrac{3}{2}$, there is an inflection point at:")
     _latex(r"\left(-\tfrac{3}{2},\, f\!\left(-\tfrac{3}{2}\right)\right)")
 
-    # Small supporting graph (compact)
     xs = np.linspace(-4, 4, 600)
     ys = 2 * xs**3 + 9 * xs**2 - 24 * xs - 10
     _small_plot(xs, ys, "Concavity change (example curve)", vlines=[-1.5])
@@ -271,7 +324,6 @@ def _worked_example_combined_table() -> None:
             "Identify any local extrema and any inflection points.",
         ],
     )
-    # Example aligns with Chapter 3 Example 5.4 and surrounding content.
     _latex(r"f(x)=x^{4}-8x^{2}+10")
 
     _step("Step 1: Find critical numbers from $f'(x)=0$.")
@@ -308,7 +360,6 @@ def _worked_example_combined_table() -> None:
     _latex(r"x=-\frac{2}{\sqrt{3}}:\;(+\to -)\Rightarrow \text{inflection point}")
     _latex(r"x=\frac{2}{\sqrt{3}}:\;(-\to +)\Rightarrow \text{inflection point}")
 
-    # Small supporting graph
     xs = np.linspace(-4, 4, 700)
     ys = xs**4 - 8 * xs**2 + 10
     _small_plot(xs, ys, "Shape features (extrema + inflection)", vlines=[-2, 0, 2, -2 / math.sqrt(3), 2 / math.sqrt(3)])
@@ -436,7 +487,7 @@ def _learn_blackboard_simulator() -> None:
 
     if example.startswith("Example A"):
         lines = [
-            r"\\textbf{Example A: Concavity and inflection point}",
+            r"\textbf{Example A: Concavity and inflection point}",
             r"f(x)=2x^{3}+9x^{2}-24x-10",
             r"f'(x)=6x^{2}+18x-24=6(x+4)(x-1)",
             r"f''(x)=12x+18=6(2x+3)",
@@ -447,7 +498,7 @@ def _learn_blackboard_simulator() -> None:
         ]
     else:
         lines = [
-            r"\\textbf{Example B: Second Derivative Test}",
+            r"\textbf{Example B: Second Derivative Test}",
             r"f(x)=x^{4}-8x^{2}+10",
             r"f'(x)=4x^{3}-16x=4x(x-2)(x+2)",
             r"f'(x)=0 \Rightarrow x=-2,\;0,\;2",
@@ -459,7 +510,7 @@ def _learn_blackboard_simulator() -> None:
 
     used = _try_render_blackboard(lines_latex=lines, height_px=440)
     if not used:
-        _fallback_blackboard(lines_latex=[f"$${ln}$$" if not ln.startswith(r"\\textbf") else ln.replace(r"\\textbf", "<b>").replace("}", "</b>") for ln in lines], height_px=440)
+        _fallback_blackboard(lines_latex=lines, height_px=440)
 
 
 # ----------------------------
@@ -468,22 +519,18 @@ def _learn_blackboard_simulator() -> None:
 
 @dataclass
 class PracticeItem:
-    prompt_lines: List[str]     # Can include plain text, but math must be inside $...$.
-    latex_lines: List[str]      # Displayed with st.latex (math only).
-    hint_lines: List[str]       # Must avoid plain-text math; if needed, use $...$ in markdown.
-    answer_steps: List[Tuple[str, Optional[str]]]  # (markdown sentence, latex or None)
+    prompt_lines: List[str]
+    latex_lines: List[str]
+    hint_lines: List[str]
+    answer_steps: List[Tuple[str, Optional[str]]]
 
 def _practice_items() -> List[PracticeItem]:
-    # All math is rendered using LaTeX either via $...$ or st.latex blocks.
     items: List[PracticeItem] = []
 
-    # Q1–Q10: concavity + inflection from f'' sign
     items.append(PracticeItem(
         prompt_lines=["Find the intervals of concavity and any inflection points for:"],
         latex_lines=[r"f(x)=x^{3}-3x"],
-        hint_lines=[
-            "Compute $f''(x)$, solve $f''(x)=0$, then test the sign of $f''(x)$ on each interval.",
-        ],
+        hint_lines=["Compute $f''(x)$, solve $f''(x)=0$, then test the sign of $f''(x)$ on each interval."],
         answer_steps=[
             ("Compute derivatives:", r"f'(x)=3x^{2}-3,\quad f''(x)=6x"),
             ("Solve for candidates:", r"6x=0 \Rightarrow x=0"),
@@ -504,7 +551,6 @@ def _practice_items() -> List[PracticeItem]:
         ]
     ))
 
-    # Build more quick items (kept exam-style, but compact)
     polys = [
         (r"f(x)=x^{4}-8x^{2}+10", r"f''(x)=12x^{2}-16"),
         (r"f(x)=x^{3}-6x^{2}+9x", r"f''(x)=6x-12"),
@@ -512,7 +558,7 @@ def _practice_items() -> List[PracticeItem]:
         (r"f(x)=x^{3}+x", r"f''(x)=6x"),
         (r"f(x)=x^{4}-4x", r"f''(x)=12x^{2}"),
     ]
-    for i, (fx, f2) in enumerate(polys, start=3):
+    for fx, f2 in polys:
         items.append(PracticeItem(
             prompt_lines=["Find concavity intervals and any inflection points for:"],
             latex_lines=[fx],
@@ -523,7 +569,6 @@ def _practice_items() -> List[PracticeItem]:
             ]
         ))
 
-    # Q8–Q12: second derivative test
     items.append(PracticeItem(
         prompt_lines=["Use the Second Derivative Test to classify the critical points of:"],
         latex_lines=[r"f(x)=x^{4}-8x^{2}+10"],
@@ -547,7 +592,6 @@ def _practice_items() -> List[PracticeItem]:
         ]
     ))
 
-    # Q14–Q20: graph interpretation (described tasks; still all math latex)
     items.append(PracticeItem(
         prompt_lines=[
             "A graph shows a curve that is concave down for $x<1$ and concave up for $x>1$.",
@@ -561,21 +605,18 @@ def _practice_items() -> List[PracticeItem]:
     items.append(PracticeItem(
         prompt_lines=[
             "A graph has a local maximum at $x=-2$ and is concave down at that point.",
-            "State what you expect about the signs of $f'( -2 )$ and $f''( -2 )$.",
+            "State what you expect about the signs of $f'(-2)$ and $f''(-2)$.",
         ],
         latex_lines=[],
         hint_lines=["At a local maximum, usually $f'(c)=0$ and concave down means $f''(c)<0$."],
-        answer_steps=[
-            ("Expected signs:", r"f'(-2)=0,\quad f''(-2)<0"),
-        ]
+        answer_steps=[("Expected signs:", r"f'(-2)=0,\quad f''(-2)<0")]
     ))
 
-    # Ensure at least 20
     while len(items) < 20:
         k = len(items) + 1
         items.append(PracticeItem(
             prompt_lines=[f"Compute concavity intervals for the function in Question {k}:"],
-            latex_lines=[r"f(x)=x^{3}-kx"],  # still LaTeX; symbol k is fine
+            latex_lines=[r"f(x)=x^{3}-kx"],
             hint_lines=["Compute $f''(x)$ and use a sign test."],
             answer_steps=[("General form:", r"f''(x)=6x\Rightarrow \text{CD on }(-\infty,0)\text{ and CU on }(0,\infty)")]
         ))
@@ -647,7 +688,6 @@ def _render_learn() -> None:
 # ----------------------------
 
 def render() -> None:
-    # Required by the app registry (fixes “missing render()”).
     st.title("Subtopic 5.5: Concavity and 2nd Derivative Test")
     st.caption("Term: Term 2 • Topic: Topic 5: Applications of Differentiation")
 
