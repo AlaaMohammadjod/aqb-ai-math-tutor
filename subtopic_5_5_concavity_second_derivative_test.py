@@ -1,626 +1,382 @@
+# ===========================
+# File 1 of 2
 # subtopic_5_5_concavity_second_derivative_test.py
+# ===========================
+
+import time
 import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
-from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
 
-
-# =========================================================
-# NON-NEGOTIABLE COMPLIANCE
-# - NO sliders
-# - ALL math must be LaTeX/KaTeX (use st.latex, or $...$ only if needed)
-# - Must expose render()
-# - Practice content stays as-is (your feedback: practice is perfect)
-# - Board simulator must use simulations.py (no iframe hack)
-# =========================================================
-
+from subtopic_5_5_concavity_second_derivative_test_data import (
+    LEARNING_OBJECTIVES,
+    WORKED_EXAMPLES,
+    PRACTICE_QUESTIONS,
+    BOARD_EXAMPLES,
+)
 
 # -----------------------------
-# Small helpers (KaTeX-safe)
+# Helpers (strict: all math is LaTeX/KaTeX)
 # -----------------------------
-def _latex(tex: str) -> None:
-    st.latex(tex)
+def _md(s: str) -> None:
+    st.markdown(s)
 
+def _latex(expr: str) -> None:
+    st.latex(expr)
 
-def _title(text: str) -> None:
-    st.markdown(f"### {text}")
+def _title_math(text_with_math: str) -> None:
+    # Use markdown + inline latex, but keep math inside \( \)
+    st.markdown(text_with_math)
 
+def _info_box(title: str, body_lines: list[str]) -> None:
+    st.markdown(
+        f"""
+<div style="border-left: 6px solid #1f77b4; background: #f2f7ff; padding: 12px 14px; border-radius: 10px; margin: 8px 0 14px 0;">
+  <div style="font-weight: 800; margin-bottom: 8px;">{title}</div>
+  <div style="line-height: 1.55;">
+    {"".join([f"<div style='margin: 4px 0;'>{line}</div>" for line in body_lines])}
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
-def _p(text: str) -> None:
-    # prose ONLY (no math inside this string)
-    st.markdown(text)
+def _section_header(h: str) -> None:
+    st.markdown(f"### {h}")
 
+def _small_plot(fig, max_width_px: int = 680):
+    # Smaller + consistent plot sizing (no huge charts)
+    st.pyplot(fig, use_container_width=False)
+    plt.close(fig)
 
-def _box(title: str, bullets: List[str]) -> None:
-    # bullets can contain LaTeX ONLY via st.latex per line (to guarantee “all math is LaTeX”)
-    with st.container(border=True):
-        st.markdown(f"**{title}**")
-        for b in bullets:
-            if b.strip().startswith(r"\(") or b.strip().startswith(r"\[") or b.strip().startswith(r"$") or "\\" in b:
-                # If user accidentally passes math here, force it to LaTeX line.
-                _latex(b.replace(r"\(", "").replace(r"\)", "").replace("$", ""))
-            else:
-                st.markdown(f"- {b}")
-
-
-def _latex_bullets(lines: List[str]) -> None:
-    for ln in lines:
-        _latex(ln)
-
-
-def _small_plot(
-    f: Callable[[np.ndarray], np.ndarray],
+def _plot_function_with_marks(
+    f,
     x_min: float,
     x_max: float,
     title: str,
-) -> None:
-    xs = np.linspace(x_min, x_max, 800)
+    x_marks: list[float] | None = None,
+    y_marks: list[float] | None = None,
+):
+    xs = np.linspace(x_min, x_max, 600)
     ys = f(xs)
 
-    plt.figure(figsize=(6.0, 3.2), dpi=160)
-    ax = plt.gca()
+    fig = plt.figure(figsize=(7.2, 3.6), dpi=140)
+    ax = fig.add_subplot(1, 1, 1)
     ax.plot(xs, ys)
     ax.axhline(0, linewidth=1)
     ax.axvline(0, linewidth=1)
+    ax.set_title(title)
     ax.set_xlabel("x")
     ax.set_ylabel("y")
-    ax.set_title(title)
     ax.grid(True, alpha=0.25)
-    st.pyplot(plt.gcf(), clear_figure=True)
 
+    if x_marks:
+        for xm in x_marks:
+            ax.axvline(xm, linestyle="--", linewidth=1, alpha=0.8)
+    if x_marks and y_marks and len(x_marks) == len(y_marks):
+        ax.scatter(x_marks, y_marks)
 
-def _render_blackboard_from_simulations() -> None:
-    """Use the board simulator from simulations.py (no iframe)."""
-    try:
-        import simulations  # type: ignore
-    except Exception as e:
-        st.error("Could not import `simulations.py`.")
-        st.exception(e)
-        return
+    _small_plot(fig)
 
-    candidates = [
-        "render_blackboard_simulator",
-        "render_board_simulator",
-        "render_blackboard",
-        "board_simulator",
-    ]
-    for name in candidates:
-        fn = getattr(simulations, name, None)
-        if callable(fn):
-            try:
-                fn()
-                return
-            except Exception as e:
-                st.error("A blackboard simulator function was found, but it raised an error.")
-                st.exception(e)
-                return
+def _render_clean_table(headers: list[str], rows: list[list[str]], title: str | None = None):
+    """
+    Render a *readable* table using matplotlib (large font, no overlap).
+    Note: math in tables is rendered as LaTeX-style text inside the figure.
+    """
+    fig = plt.figure(figsize=(8.0, 2.6), dpi=170)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.axis("off")
 
-    st.error("No supported blackboard simulator function name was found inside `simulations.py`.")
+    cell_text = rows
+    table = ax.table(
+        cellText=cell_text,
+        colLabels=headers,
+        cellLoc="center",
+        colLoc="center",
+        loc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(12)
+    table.scale(1.15, 1.55)
 
+    if title:
+        ax.set_title(title, fontsize=13, pad=10)
+
+    _small_plot(fig)
+
+def _katex_all_math_reminder():
+    _info_box(
+        "How to write your final answers clearly",
+        [
+            "Whenever you write a derivative, write it as \\(f'(x)\\) or \\(f''(x)\\).",
+            "When you give intervals, write them as \\((a,b)\\), \\([a,b]\\), \\((a,\\infty)\\), or \\(( -\\infty, b)\\).",
+            "When you state concavity, use: \\(f''(x)>0\\Rightarrow\\) concave up, and \\(f''(x)<0\\Rightarrow\\) concave down.",
+            "An inflection point happens when concavity **changes** (sign change of \\(f''(x)\\)).",
+        ],
+    )
 
 # -----------------------------
-# Worked examples (Exam format)
+# Blackboard-style auto-solved (no next-step buttons)
 # -----------------------------
-@dataclass
-class WorkedExample:
-    title: str
-    question_tex: str
-    tasks_tex: List[str]
-    steps_tex: List[str]
-    plot_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
-    plot_domain: Tuple[float, float] = (-4, 4)
-    plot_title: Optional[str] = None
+def _board_play(example_key: str):
+    ex = BOARD_EXAMPLES[example_key]
 
-
-def _worked_examples_bank() -> List[WorkedExample]:
-    # Keep tightly within objectives 5.5.1–5.5.5 and aligned to Chapter 3 style:
-    # - exam question
-    # - clear tasks
-    # - full teacher-like solution
-
-    ex1 = WorkedExample(
-        title="Example 1: Concavity and inflection point",
-        question_tex=r"f(x)=2x^3+9x^2-24x-10",
-        tasks_tex=[
-            r"\text{(i) Find the intervals where }f\text{ is concave up and concave down.}",
-            r"\text{(ii) Identify the inflection point(s).}",
-        ],
-        steps_tex=[
-            r"\textbf{Step 1. Compute the second derivative.}",
-            r"f'(x)=6x^2+18x-24",
-            r"f''(x)=12x+18=6(2x+3)",
-            r"\textbf{Step 2. Find candidates for inflection.}",
-            r"f''(x)=0\;\Rightarrow\;12x+18=0\;\Rightarrow\;x=-\frac{3}{2}",
-            r"\textbf{Step 3. Sign test for }f''(x)\textbf{ on each interval.}",
-            r"\text{Pick }x=-2:\;f''(-2)=12(-2)+18=-6<0\;\Rightarrow\;\text{concave down on }\left(-\infty,-\frac{3}{2}\right)",
-            r"\text{Pick }x=0:\;f''(0)=18>0\;\Rightarrow\;\text{concave up on }\left(-\frac{3}{2},\infty\right)",
-            r"\textbf{Step 4. Inflection point (concavity change).}",
-            r"\text{Concavity changes at }x=-\frac{3}{2}\;\Rightarrow\;\text{inflection at }x=-\frac{3}{2}",
-            r"f\!\left(-\frac{3}{2}\right)=\frac{47}{2}",
-            r"\textbf{Answer: }\;\text{concave down on }\left(-\infty,-\frac{3}{2}\right),\;\text{concave up on }\left(-\frac{3}{2},\infty\right),\;\text{inflection point }\left(-\frac{3}{2},\frac{47}{2}\right)",
-        ],
-        plot_func=lambda x: 2 * x**3 + 9 * x**2 - 24 * x - 10,
-        plot_domain=(-4, 4),
-        plot_title="Concavity change (supporting graph)",
+    # Blackboard frame
+    st.markdown(
+        """
+<div style="background:#0b0f14; border:1px solid #1d2a3a; border-radius:14px; padding:18px 18px 14px 18px; margin-top:10px;">
+  <div style="color:#d7e7ff; font-weight:800; margin-bottom:8px;">Blackboard</div>
+  <div style="color:#a9c7ff; margin-bottom:12px; line-height:1.55;">
+    Watch the full solution appear line-by-line on the same board.
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
     )
 
-    ex2 = WorkedExample(
-        title="Example 2: Second Derivative Test (local extrema)",
-        question_tex=r"f(x)=x^4-8x^2+10",
-        tasks_tex=[
-            r"\text{Find the critical numbers.}",
-            r"\text{Use the Second Derivative Test to classify each critical number.}",
-        ],
-        steps_tex=[
-            r"\textbf{Step 1. Find critical numbers from }f'(x)=0.",
-            r"f'(x)=4x^3-16x=4x(x^2-4)=4x(x-2)(x+2)",
-            r"f'(x)=0\;\Rightarrow\;x=-2,\;0,\;2",
-            r"\textbf{Step 2. Use }f''(x)\textbf{ at each critical number.}",
-            r"f''(x)=12x^2-16",
-            r"f''(-2)=12(4)-16=32>0\;\Rightarrow\;\text{local minimum at }x=-2",
-            r"f''(0)=-16<0\;\Rightarrow\;\text{local maximum at }x=0",
-            r"f''(2)=32>0\;\Rightarrow\;\text{local minimum at }x=2",
-        ],
-        plot_func=lambda x: x**4 - 8 * x**2 + 10,
-        plot_domain=(-4, 4),
-        plot_title="Extrema (supporting graph)",
-    )
+    # We write into one placeholder (same canvas)
+    board = st.empty()
 
-    ex3 = WorkedExample(
-        title="Example 3: When the Second Derivative Test is inconclusive",
-        question_tex=r"f(x)=x^4",
-        tasks_tex=[
-            r"\text{Find the critical number(s).}",
-            r"\text{Apply the Second Derivative Test and state what happens.}",
-            r"\text{Decide the correct classification.}",
-        ],
-        steps_tex=[
-            r"\textbf{Step 1. Critical numbers from }f'(x)=0.",
-            r"f'(x)=4x^3",
-            r"4x^3=0\;\Rightarrow\;x=0",
-            r"\textbf{Step 2. Second Derivative Test.}",
-            r"f''(x)=12x^2",
-            r"f''(0)=0\;\Rightarrow\;\text{inconclusive}",
-            r"\textbf{Step 3. Correct classification (within objective 5.5.3).}",
-            r"x^4\ge 0\;\text{for all }x\;\Rightarrow\;x=0\text{ is a local minimum}",
+    lines = ex["lines_latex"]  # list[str] with LaTeX (already safe)
+    delay = ex.get("delay_s", 0.35)
+
+    # Accumulate and redraw in the SAME place
+    rendered = []
+    for line in lines:
+        rendered.append(line)
+        with board.container():
+            st.markdown(
+                """
+<div style="background:#0b0f14; border:1px solid #1d2a3a; border-radius:14px; padding:16px 16px 14px 16px;">
+""",
+                unsafe_allow_html=True,
+            )
+            for L in rendered:
+                st.latex(L)
+            st.markdown("</div>", unsafe_allow_html=True)
+        time.sleep(delay)
+
+def _board_ui():
+    _section_header("Board simulator (auto-solved examples)")
+    _info_box(
+        "How to use this",
+        [
+            "Choose an example, then press the play button to see the **full** solution appear on the same board.",
+            "The board shows the derivatives, the sign reasoning for \\(f''(x)\\), then the final concavity and inflection conclusions.",
         ],
     )
 
-    ex4 = WorkedExample(
-        title="Example 4: Concavity where }f''(x)\text{ is undefined (corner case)",
-        question_tex=r"f(x)=|x|",
-        tasks_tex=[
-            r"\text{Explain why concavity is not defined at }x=0.",
-            r"\text{State what happens on }(-\infty,0)\text{ and }(0,\infty).",
-        ],
-        steps_tex=[
-            r"|x|=\begin{cases}-x,&x<0\\x,&x\ge 0\end{cases}",
-            r"f'(x)=\begin{cases}-1,&x<0\\1,&x>0\end{cases}\;\text{and }f'(0)\text{ does not exist (corner)}",
-            r"\text{Because }f'(0)\text{ does not exist, }f''(0)\text{ is undefined}",
-            r"\textbf{Conclusion: }\text{concavity is not defined at }x=0\text{ (corner)}",
-        ],
-        plot_func=lambda x: np.abs(x),
-        plot_domain=(-4, 4),
-        plot_title="Corner example (supporting graph)",
-    )
+    ex_keys = list(BOARD_EXAMPLES.keys())
+    labels = [BOARD_EXAMPLES[k]["label"] for k in ex_keys]
+    choice = st.radio("Choose an example", labels, index=0, horizontal=True)
+    chosen_key = ex_keys[labels.index(choice)]
 
-    # Objective 5.5.5 (economic/production) — keep strictly within: interpret concavity via second derivative.
-    ex5 = WorkedExample(
-        title="Example 5: Economic interpretation (cost / revenue concavity)",
-        question_tex=r"\text{Suppose }C(x)\text{ is a cost function and }C''(x)>0\text{ on an interval.}",
-        tasks_tex=[
-            r"\text{State what concavity means for }C(x)\text{ on that interval.}",
-            r"\text{Interpret what happens to }C'(x)\text{ (marginal cost).}",
-        ],
-        steps_tex=[
-            r"C''(x)>0\;\Rightarrow\;C(x)\text{ is concave up on that interval}",
-            r"\text{Concave up means slopes increase } \Rightarrow\; C'(x)\text{ is increasing}",
-            r"\textbf{Interpretation: }\text{marginal cost increases as production increases on that interval}",
-        ],
-    )
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        play = st.button("Play solution", use_container_width=True)
+    with c2:
+        reset = st.button("Reset", use_container_width=True)
 
-    return [ex1, ex2, ex3, ex4, ex5]
+    if reset:
+        st.session_state["board_last_played"] = None
+        st.rerun()
 
+    if play:
+        st.session_state["board_last_played"] = chosen_key
 
-def _render_worked_examples() -> None:
-    bank = _worked_examples_bank()
-    title = st.radio("Choose a worked example", [b.title for b in bank], horizontal=False)
-    ex = next(b for b in bank if b.title == title)
-
-    _title("Question")
-    _latex(ex.question_tex)
-
-    _title("Task")
-    _latex_bullets(ex.tasks_tex)
-
-    _title("Solution (step-by-step)")
-    _latex_bullets(ex.steps_tex)
-
-    if ex.plot_func is not None and ex.plot_title is not None:
-        _title("Supporting graph")
-        _small_plot(ex.plot_func, ex.plot_domain[0], ex.plot_domain[1], ex.plot_title)
-
+    if st.session_state.get("board_last_played") == chosen_key:
+        _board_play(chosen_key)
 
 # -----------------------------
-# Learn tab (FULL, organized, objective-by-objective)
+# Learn tab content (strictly inside objectives)
 # -----------------------------
-def _render_objectives() -> None:
-    _title("Learning objectives (5.5)")
-    _p("This subtopic focuses only on the following outcomes.")
-    _latex_bullets(
-        [
-            r"\textbf{5.5.1}\;\text{Find intervals where a function is concave up/down and identify inflection points.}",
-            r"\textbf{5.5.2}\;\text{Build combined tables (tables of variation) summarizing behavior and concavity.}",
-            r"\textbf{5.5.3}\;\text{Use the Second Derivative Test to classify local extrema and know when it is inconclusive.}",
-            r"\textbf{5.5.4}\;\text{Estimate increase/decrease, extrema, concavity, and inflection points from a graph.}",
-            r"\textbf{5.5.5}\;\text{Apply concavity ideas to economic/production contexts (sales, efficiency, cost).}",
-        ]
-    )
+def _render_objectives():
+    _section_header("Learning objectives")
+    for obj in LEARNING_OBJECTIVES:
+        st.markdown(f"- {obj}")
 
-
-def _render_551() -> None:
-    _title("5.5.1 Concavity and inflection points")
-    _box(
-        "Meaning (in student-friendly words)",
+def _render_concavity_core():
+    _section_header("5.5.1 Concavity and inflection points")
+    _info_box(
+        "Key idea",
         [
-            "Concavity tells you how the slope is changing as you move left to right.",
-            "You will decide concavity using the sign of the second derivative.",
+            "Concavity describes how the slope \\(f'(x)\\) changes.",
+            "If the slopes are getting **larger** as \\(x\\) increases, then \\(f\\) is concave up.",
+            "If the slopes are getting **smaller** as \\(x\\) increases, then \\(f\\) is concave down.",
         ],
     )
 
-    _latex(r"f''(x)>0\;\Rightarrow\;f\text{ is concave up}")
-    _latex(r"f''(x)<0\;\Rightarrow\;f\text{ is concave down}")
+    st.markdown("Use the second derivative to test concavity:")
+    _latex(r"f''(x)>0 \ \Rightarrow\ \text{concave up}")
+    _latex(r"f''(x)<0 \ \Rightarrow\ \text{concave down}")
 
-    _box(
-        "How to find inflection points (exact method)",
+    _info_box(
+        "Inflection points",
         [
-            "Find candidates where the second derivative becomes zero or undefined.",
-            "Do a sign test for the second derivative on the intervals around each candidate.",
-            "You have an inflection point only if the concavity changes.",
+            "An inflection point is a point where the graph changes concavity.",
+            "To find candidates: solve \\(f''(x)=0\\) and also check where \\(f''(x)\\) is undefined (if it happens).",
+            "Then you must confirm a sign change of \\(f''(x)\\) across that \\(x\\)-value.",
         ],
     )
-    _latex_bullets(
+
+def _render_second_derivative_test():
+    _section_header("5.5.3 Second derivative test (local maximum / local minimum)")
+    _info_box(
+        "When you can use it",
         [
-            r"\text{Candidates: }f''(x)=0\;\text{ or }f''(x)\text{ is undefined}",
-            r"\text{Confirm: sign change of }f''(x)\text{ across the candidate}",
-        ]
+            "First, find a critical point by solving \\(f'(c)=0\\).",
+            "Then evaluate \\(f''(c)\\).",
+        ],
     )
+    st.markdown("Classification:")
+    _latex(r"f''(c)<0 \ \Rightarrow\ f(c)\ \text{is a local maximum}")
+    _latex(r"f''(c)>0 \ \Rightarrow\ f(c)\ \text{is a local minimum}")
+    _latex(r"f''(c)=0 \ \Rightarrow\ \text{inconclusive (you must use another method)}")
 
-    _title("Mini example (fully solved)")
-    _latex(r"f(x)=x^3-3x")
-    _latex(r"f'(x)=3x^2-3")
-    _latex(r"f''(x)=6x")
-    _latex(r"f''(x)=0\;\Rightarrow\;x=0")
-    _latex(r"f''(x)<0\text{ on }(-\infty,0)\;\Rightarrow\;\text{concave down}")
-    _latex(r"f''(x)>0\text{ on }(0,\infty)\;\Rightarrow\;\text{concave up}")
-    _latex(r"\text{Inflection point: }(0,f(0))=(0,0)")
-
-    _small_plot(lambda x: x**3 - 3 * x, -4, 4, "Concavity change (supporting graph)")
-
-
-def _render_552() -> None:
-    _title("5.5.2 Combined table (table of variation)")
-    _box(
+def _render_tables_of_variation():
+    _section_header("5.5.2 Combined tables (variation + concavity)")
+    _info_box(
         "What your combined table must include",
         [
-            "Critical numbers from the first derivative.",
-            "Inflection candidates from the second derivative.",
-            "Intervals on one number line using all split points together.",
-            "Signs of the first derivative (increasing / decreasing).",
-            "Signs of the second derivative (concave up / concave down).",
+            "Interval row split using all critical numbers (from \\(f'(x)=0\\)) and all concavity candidates (from \\(f''(x)=0\\) or where \\(f''(x)\\) is undefined).",
+            "A sign row for \\(f'(x)\\) to decide increasing/decreasing.",
+            "A sign row for \\(f''(x)\\) to decide concave up/concave down.",
+            "A final behavior row summarizing increasing/decreasing and concavity on each interval.",
         ],
     )
 
-    _title("Clean template (KaTeX — no overlap)")
-    # Use st.latex array to avoid overlap and guarantee math rendering
-    _latex(
-        r"""
-\begin{array}{|c|c|c|c|c|}
-\hline
-\text{Interval} & \text{sign of }f'(x) & \text{Behavior} & \text{sign of }f''(x) & \text{Concavity}\\
-\hline
-(-\infty,a) & +\;/\;- & \text{Inc.}\;/\;\text{Dec.} & +\;/\;- & \text{CU}\;/\;\text{CD}\\
-\hline
-(a,b) & +\;/\;- & \text{Inc.}\;/\;\text{Dec.} & +\;/\;- & \text{CU}\;/\;\text{CD}\\
-\hline
-(b,\infty) & +\;/\;- & \text{Inc.}\;/\;\text{Dec.} & +\;/\;- & \text{CU}\;/\;\text{CD}\\
-\hline
-\end{array}
-"""
-    )
-    _latex(r"\text{Legend: }\;\text{CU}=\text{concave up},\;\text{CD}=\text{concave down},\;\text{Inc.}=\text{increasing},\;\text{Dec.}=\text{decreasing}")
+    headers = [
+        r"Interval",
+        r"sign of $f'(x)$",
+        r"Behavior",
+        r"sign of $f''(x)$",
+        r"Concavity",
+    ]
+    rows = [
+        [r"$(-\infty,a)$", r"$+/-$", r"$\text{Inc.}/\text{Dec.}$", r"$+/-$", r"$\text{CU}/\text{CD}$"],
+        [r"$(a,b)$", r"$+/-$", r"$\text{Inc.}/\text{Dec.}$", r"$+/-$", r"$\text{CU}/\text{CD}$"],
+        [r"$(b,\infty)$", r"$+/-$", r"$\text{Inc.}/\text{Dec.}$", r"$+/-$", r"$\text{CU}/\text{CD}$"],
+    ]
+    _render_clean_table(headers, rows, title="Combined table template")
 
-
-def _render_553() -> None:
-    _title("5.5.3 Second Derivative Test (local extrema)")
-    _box(
-        "Second Derivative Test (use only at a critical number)",
+def _render_graph_estimation():
+    _section_header("5.5.4 Estimating from a graph")
+    _info_box(
+        "What to look for on a graph",
         [
-            "First, find a critical number c where the first derivative is zero.",
-            "Then evaluate the second derivative at that point.",
-            "If the second derivative is positive, the point is a local minimum.",
-            "If the second derivative is negative, the point is a local maximum.",
-            "If the second derivative is zero or undefined, the test is inconclusive.",
+            "Increasing where the curve rises left-to-right; decreasing where it falls left-to-right.",
+            "Concave up where the curve bends like a cup \\((\\cup)\\); concave down where it bends like a cap \\((\\cap)\\).",
+            "Inflection point where the bending switches from \\(\\cup\\) to \\(\\cap\\), or from \\(\\cap\\) to \\(\\cup\\).",
         ],
     )
 
-    _latex(r"\text{If }f'(c)=0\text{ and }f''(c)>0\;\Rightarrow\;\text{local minimum at }x=c")
-    _latex(r"\text{If }f'(c)=0\text{ and }f''(c)<0\;\Rightarrow\;\text{local maximum at }x=c")
-    _latex(r"\text{If }f'(c)=0\text{ and }f''(c)=0\;\Rightarrow\;\text{inconclusive}")
+    # Keep chart smaller
+    def f(x):
+        return 2 * x**3 + 9 * x**2 - 24 * x - 10
 
-    _title("Mini example (inconclusive case)")
-    _latex(r"f(x)=x^4")
-    _latex(r"f'(x)=4x^3=0\;\Rightarrow\;x=0")
-    _latex(r"f''(x)=12x^2\;\Rightarrow\;f''(0)=0\;\Rightarrow\;\text{inconclusive}")
-    _latex(r"x^4\ge 0\text{ for all }x\;\Rightarrow\;\text{local minimum at }x=0")
-
-
-def _render_554() -> None:
-    _title("5.5.4 Estimating from a graph")
-    _box(
-        "What to look for on the curve",
-        [
-            "Increasing where the curve rises from left to right.",
-            "Decreasing where the curve falls from left to right.",
-            "Concave up where slopes are getting larger (more positive).",
-            "Concave down where slopes are getting smaller (less positive).",
-            "Inflection where the curve switches concavity.",
-        ],
+    _plot_function_with_marks(
+        f,
+        x_min=-4.2,
+        x_max=4.2,
+        title="Example curve for estimating concavity and turning behavior",
+        x_marks=[-1.5, 0.0, 2.0],
+        y_marks=[f(-1.5), f(0.0), f(2.0)],
     )
 
-    _latex(r"\text{Concave up: slopes increase}\;\Rightarrow\;f''(x)>0")
-    _latex(r"\text{Concave down: slopes decrease}\;\Rightarrow\;f''(x)<0")
-
-    _title("Short visual example (smaller graph)")
-    g = lambda x: x**3 - 3 * x
-    _small_plot(g, -4, 4, "Example curve for estimating concavity and turning behavior")
-
-
-def _render_555() -> None:
-    _title("5.5.5 Economic / production interpretation")
-    _box(
-        "How to interpret the sign of a second derivative",
+def _render_applications():
+    _section_header("5.5.5 Applications (economics / production)")
+    _info_box(
+        "How concavity helps in applications",
         [
-            "If a quantity is concave up, its rate of change is increasing.",
-            "If a quantity is concave down, its rate of change is decreasing.",
+            "If \\(C(t)\\) is cost, then \\(C'(t)\\) is the cost rate and \\(C''(t)\\) tells whether that rate is increasing or decreasing.",
+            "If \\(C''(t)>0\\), then \\(C'(t)\\) is increasing and the cost rate is rising.",
+            "If \\(C''(t)<0\\), then \\(C'(t)\\) is decreasing and the cost rate is falling.",
         ],
     )
 
-    _latex(r"C''(x)>0\;\Rightarrow\;C(x)\text{ concave up}\;\Rightarrow\;C'(x)\text{ increasing (marginal cost rises)}")
-    _latex(r"R''(x)<0\;\Rightarrow\;R(x)\text{ concave down}\;\Rightarrow\;R'(x)\text{ decreasing (marginal revenue falls)}")
+    st.markdown("Example (exam format):")
+    _info_box(
+        "Question",
+        [
+            r"Let \(C(t)=t^3-6t^2+12t+5\).",
+            r"1) Find where \(C\) is concave up and concave down.",
+            r"2) Interpret what this means for the behavior of the cost rate \(C'(t)\).",
+        ],
+    )
+    st.markdown("Solution:")
+    _latex(r"C'(t)=3t^2-12t+12")
+    _latex(r"C''(t)=6t-12=6(t-2)")
+    _latex(r"C''(t)=0 \Rightarrow t=2")
+    _latex(r"\text{For }t<2,\ C''(t)<0\Rightarrow C\text{ is concave down}")
+    _latex(r"\text{For }t>2,\ C''(t)>0\Rightarrow C\text{ is concave up}")
+    _latex(r"\text{Interpretation: }t<2,\ C'(t)\text{ decreases; }t>2,\ C'(t)\text{ increases}")
 
+def _render_worked_examples():
+    _section_header("Worked examples (exam format)")
+    for ex in WORKED_EXAMPLES:
+        _info_box("Question", ex["question_lines"])
+        st.markdown("Solution:")
+        for L in ex["solution_latex_lines"]:
+            _latex(L)
 
-def _render_learn() -> None:
-    _render_objectives()
-    st.divider()
-    _render_551()
-    st.divider()
-    _render_552()
-    st.divider()
-    _render_553()
-    st.divider()
-    _render_554()
-    st.divider()
-    _render_555()
-
-
-# -----------------------------
-# Practice (KEEP AS-IS)
-# -----------------------------
-@dataclass
-class PracticeQ:
-    q_latex: str
-    answer_steps_latex: List[str]
-
-
-def _practice_bank() -> List[PracticeQ]:
-    # EXACT same practice content as before (your feedback: practice is perfect)
-    qs: List[PracticeQ] = []
-
-    def add(q: str, steps: List[str]):
-        qs.append(PracticeQ(q_latex=q, answer_steps_latex=steps))
-
-    add(
-        r"\textbf{Q1.}\; f(x)=x^3-3x.\; \text{Find concavity intervals and inflection points.}",
-        [
-            r"f''(x)=6x.",
-            r"6x=0\Rightarrow x=0.",
-            r"f''(x)<0\text{ on }(-\infty,0)\Rightarrow \text{concave down}.",
-            r"f''(x)>0\text{ on }(0,\infty)\Rightarrow \text{concave up}.",
-            r"\text{Inflection at }x=0\Rightarrow (0,f(0))=(0,0).",
-        ],
-    )
-    add(
-        r"\textbf{Q2.}\; f(x)=2x^3+9x^2-24x-10.\; \text{Find concavity and inflection point.}",
-        [
-            r"f''(x)=12x+18.",
-            r"12x+18=0\Rightarrow x=-\frac{3}{2}.",
-            r"f''(x)<0\text{ on }(-\infty,-\tfrac{3}{2}),\; f''(x)>0\text{ on }(-\tfrac{3}{2},\infty).",
-            r"\text{Inflection at }\left(-\frac{3}{2},\frac{47}{2}\right).",
-        ],
-    )
-    add(
-        r"\textbf{Q3.}\; f(x)=x^4-6x^2.\; \text{Find concavity and inflection points.}",
-        [
-            r"f''(x)=12x^2-12=12(x^2-1).",
-            r"f''(x)=0\Rightarrow x=\pm 1.",
-            r"f''(x)>0\text{ on }(-\infty,-1)\cup(1,\infty)\Rightarrow \text{concave up}.",
-            r"f''(x)<0\text{ on }(-1,1)\Rightarrow \text{concave down}.",
-            r"\text{Inflection at }(-1,f(-1))=(-1,-5)\text{ and }(1,f(1))=(1,-5).",
-        ],
-    )
-    add(
-        r"\textbf{Q4.}\; f(x)=\ln(x).\; \text{Find concavity on its domain.}",
-        [
-            r"f''(x)=-\frac{1}{x^2}.",
-            r"f''(x)<0\text{ for }x>0\Rightarrow \text{concave down on }(0,\infty).",
-        ],
-    )
-    add(
-        r"\textbf{Q5.}\; f(x)=e^x.\; \text{Find concavity on }(-\infty,\infty).",
-        [
-            r"f''(x)=e^x>0\Rightarrow \text{concave up on }(-\infty,\infty).",
-        ],
-    )
-    add(
-        r"\textbf{Q6.}\; f(x)=\frac{1}{x}.\; \text{Find concavity on its domain.}",
-        [
-            r"f''(x)=\frac{2}{x^3}.",
-            r"f''(x)<0\text{ on }(-\infty,0)\Rightarrow \text{concave down}.",
-            r"f''(x)>0\text{ on }(0,\infty)\Rightarrow \text{concave up}.",
-            r"\text{No inflection point because }x=0\text{ is not in the domain.}",
-        ],
-    )
-    add(
-        r"\textbf{Q7.}\; f(x)=x^{1/3}.\; \text{Discuss concavity where }f''(x)\text{ exists.}",
-        [
-            r"f'(x)=\frac{1}{3}x^{-2/3}.",
-            r"f''(x)=-\frac{2}{9}x^{-5/3}.",
-            r"f''(x)>0\text{ on }(-\infty,0)\Rightarrow \text{concave up}.",
-            r"f''(x)<0\text{ on }(0,\infty)\Rightarrow \text{concave down}.",
-            r"\text{Here }f''(0)\text{ is undefined; concavity changes across }0\Rightarrow \text{inflection at }(0,0).",
-        ],
-    )
-    add(
-        r"\textbf{Q8.}\; f(x)=\sqrt{x}.\; \text{Find concavity on its domain.}",
-        [
-            r"f''(x)=-\frac{1}{4}x^{-3/2}<0\text{ for }x>0\Rightarrow \text{concave down on }(0,\infty).",
-        ],
-    )
-    add(
-        r"\textbf{Q9.}\; f(x)=x^4-8x^2+10.\; \text{Classify local extrema using }f''(x).",
-        [
-            r"f'(x)=4x(x-2)(x+2)\Rightarrow x=-2,0,2.",
-            r"f''(x)=12x^2-16.",
-            r"f''(-2)=32>0\Rightarrow \text{local min at }x=-2.",
-            r"f''(0)=-16<0\Rightarrow \text{local max at }x=0.",
-            r"f''(2)=32>0\Rightarrow \text{local min at }x=2.",
-        ],
-    )
-    add(
-        r"\textbf{Q10.}\; f(x)=x^3.\; \text{Apply the Second Derivative Test at the critical point.}",
-        [
-            r"f'(x)=3x^2=0\Rightarrow x=0.",
-            r"f''(x)=6x\Rightarrow f''(0)=0\Rightarrow \text{inconclusive}.",
-            r"\text{Use sign of }f'(x):\; f'(x)>0\text{ for }x\neq 0\Rightarrow \text{no max/min at }0.",
-        ],
-    )
-    add(
-        r"\textbf{Q11.}\; f(x)=\sin(x)\text{ on }(0,2\pi).\; \text{Use }f''(x)\text{ at critical points.}",
-        [
-            r"f'(x)=\cos(x)=0\Rightarrow x=\frac{\pi}{2},\frac{3\pi}{2}.",
-            r"f''(x)=-\sin(x).",
-            r"f''(\tfrac{\pi}{2})=-1<0\Rightarrow \text{local max at }x=\tfrac{\pi}{2}.",
-            r"f''(\tfrac{3\pi}{2})=1>0\Rightarrow \text{local min at }x=\tfrac{3\pi}{2}.",
-        ],
-    )
-    add(
-        r"\textbf{Q12.}\; f(x)=x^2.\; \text{Use }f''(x)\text{ to classify the extremum.}",
-        [
-            r"f'(x)=2x=0\Rightarrow x=0.",
-            r"f''(x)=2>0\Rightarrow \text{local min at }x=0.",
-        ],
-    )
-    add(
-        r"\textbf{Q13.}\; f(x)=-x^2.\; \text{Use }f''(x)\text{ to classify the extremum.}",
-        [
-            r"f'(x)=-2x=0\Rightarrow x=0.",
-            r"f''(x)=-2<0\Rightarrow \text{local max at }x=0.",
-        ],
-    )
-    add(
-        r"\textbf{Q14.}\; f(x)=x^4.\; \text{Apply the Second Derivative Test at }x=0.",
-        [
-            r"f'(x)=4x^3=0\Rightarrow x=0.",
-            r"f''(x)=12x^2\Rightarrow f''(0)=0\Rightarrow \text{inconclusive}.",
-            r"\text{But }x=0\text{ is a local min (since }x^4\ge 0\text{)}.",
-        ],
-    )
-    add(
-        r"\textbf{Q15.}\; f(x)=x^4-6x^2.\; \text{Build a combined table using }f'(x)\text{ and }f''(x).",
-        [
-            r"f'(x)=4x^3-12x=4x(x^2-3)\Rightarrow x=0,\pm\sqrt{3}.",
-            r"f''(x)=12x^2-12=12(x^2-1)\Rightarrow x=\pm 1.",
-            r"\text{Split intervals at }-\sqrt{3},-1,0,1,\sqrt{3}\text{ and test signs of }f',f''.",
-        ],
-    )
-    add(
-        r"\textbf{Q16.}\; f(x)=\ln(x).\; \text{State increasing/decreasing and concavity on }(0,\infty).",
-        [
-            r"f'(x)=\frac{1}{x}>0\Rightarrow \text{increasing on }(0,\infty).",
-            r"f''(x)=-\frac{1}{x^2}<0\Rightarrow \text{concave down on }(0,\infty).",
-        ],
-    )
-    add(
-        r"\textbf{Q17.}\; f(x)=e^{-x}.\; \text{State concavity and monotonicity.}",
-        [
-            r"f'(x)=-e^{-x}<0\Rightarrow \text{decreasing on }(-\infty,\infty).",
-            r"f''(x)=e^{-x}>0\Rightarrow \text{concave up on }(-\infty,\infty).",
-        ],
-    )
-    add(
-        r"\textbf{Q18.}\; f(x)=\frac{1}{x}.\; \text{Build a combined sign description on }(-\infty,0)\cup(0,\infty).",
-        [
-            r"f'(x)=-\frac{1}{x^2}<0\Rightarrow \text{decreasing on each interval.}",
-            r"f''(x)=\frac{2}{x^3}\Rightarrow \text{concave down on }(-\infty,0),\;\text{concave up on }(0,\infty).",
-        ],
-    )
-    add(
-        r"\textbf{Q19.}\; \text{If }C''(x)>0\text{ for all }x,\text{ what does that mean about }C(x)\text{?}",
-        [
-            r"C''(x)>0\Rightarrow C(x)\text{ is concave up}.",
-            r"\text{So }C'(x)\text{ is increasing: marginal cost rises as production increases}.",
-        ],
-    )
-    add(
-        r"\textbf{Q20.}\; \text{If }R''(x)<0\text{ for all }x,\text{ what does that mean about }R(x)\text{?}",
-        [
-            r"R''(x)<0\Rightarrow R(x)\text{ is concave down}.",
-            r"\text{So }R'(x)\text{ is decreasing: marginal revenue falls as production increases}.",
-        ],
-    )
-
-    return qs
-
-
-def _render_practice() -> None:
-    _title("Practice (exam style)")
-    _box(
-        "How to use this practice",
-        [
-            "For each question, write your answer clearly and include the calculus steps.",
-            "Then open the answer to compare with your work.",
-        ],
-    )
-
-    qs = _practice_bank()
-    for i, q in enumerate(qs, start=1):
-        with st.expander(f"Q{i}", expanded=False):
-            _latex(q.q_latex)
-            if st.button(f"Show answer for Q{i}", key=f"show_ans_{i}"):
-                for s in q.answer_steps_latex:
-                    _latex(s)
-
-
-# -----------------------------
-# Main render()
-# -----------------------------
-def render() -> None:
+def _render_learn():
     st.header("Subtopic 5.5: Concavity and 2nd Derivative Test")
 
-    tabs = st.tabs(["Learn", "Worked examples", "Board simulator", "Practice"])
+    _render_objectives()
+    _katex_all_math_reminder()
 
-    with tabs[0]:
+    _render_concavity_core()
+    _render_second_derivative_test()
+    _render_tables_of_variation()
+    _render_worked_examples()
+    _board_ui()
+    _render_graph_estimation()
+    _render_applications()
+
+# -----------------------------
+# Practice tab (keep structure clean, all math in LaTeX)
+# -----------------------------
+def _render_practice():
+    st.header("Practice")
+
+    _info_box(
+        "How to answer",
+        [
+            r"For each question: compute \(f'(x)\) and/or \(f''(x)\) as required.",
+            r"State intervals using correct notation such as \((a,b)\), \((a,\infty)\), or \((-\infty,b)\).",
+            r"When asked for inflection points, you must confirm a concavity change (sign change of \(f''(x)\)).",
+        ],
+    )
+
+    for i, q in enumerate(PRACTICE_QUESTIONS, start=1):
+        st.markdown(f"#### Q{i}")
+        _info_box("Question", q["question_lines"])
+
+        # Show answer button (no sliders)
+        key = f"show_ans_{i}"
+        if key not in st.session_state:
+            st.session_state[key] = False
+
+        cols = st.columns([1, 3])
+        with cols[0]:
+            if st.button("Show answer", key=f"btn_{i}", use_container_width=True):
+                st.session_state[key] = not st.session_state[key]
+
+        if st.session_state[key]:
+            st.markdown("Answer:")
+            for L in q["answer_latex_lines"]:
+                _latex(L)
+
+# -----------------------------
+# Required entry point
+# -----------------------------
+def render():
+    # Must exist for the app registry
+    if "board_last_played" not in st.session_state:
+        st.session_state["board_last_played"] = None
+
+    tab1, tab2 = st.tabs(["Learn", "Practice"])
+    with tab1:
         _render_learn()
-
-    with tabs[1]:
-        _render_worked_examples()
-
-    with tabs[2]:
-        _title("Board simulator")
-        _p("Choose an example and watch the full solution appear on the same board.")
-        _render_blackboard_from_simulations()
-
-    with tabs[3]:
+    with tab2:
         _render_practice()
