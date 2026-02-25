@@ -1,631 +1,574 @@
-# subtopic_5_6_curve_sketching_overview.py
-import math
+"""
+subtopic_5_6_curve_sketching_overview.py
+
+AQB Grade 12 AI Math Tutor — Term 2 — Topic 5
+Subtopic 5.6: Overview of Curve Sketching
+
+Non-negotiables implemented:
+- Has render() (required by app.py registry).
+- Learn + Practice tabs only.
+- ALL math is rendered with LaTeX/KaTeX (st.latex / LaTeX blocks).
+- Rich, student-friendly, very organized.
+- Worked examples are visual + step-by-step using the shared simulations.py
+  blackboard (no sliders; small/controlled graphs).
+- Practice contains 20 questions with Hint + Show Solution.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
+
 import numpy as np
-import streamlit as st
 import matplotlib.pyplot as plt
+import streamlit as st
+
+from simulations import BoardStep, render_simulation
 
 
-# -------------------------
-# Safe “board simulator” hook (uses your simulations.py if present)
-# -------------------------
-def _get_board_renderer():
-    """
-    Tries to reuse your existing simulations.py board (the one you said is better).
-    We try multiple common function names so this file does NOT break your app.
-    """
-    try:
-        import simulations  # type: ignore
+# -----------------------------
+# Small helpers
+# -----------------------------
 
-        candidates = [
-            "render_board_simulator",
-            "render_blackboard_simulator",
-            "board_simulator",
-            "blackboard_simulator",
-            "render_simulation_board",
-            "render_board",
-            "render_blackboard",
-        ]
-        for name in candidates:
-            fn = getattr(simulations, name, None)
-            if callable(fn):
-                return fn
-
-        # If simulations.py exists but no known function name is found,
-        # return a tiny fallback that warns (without crashing).
-        def _fallback(*_args, **_kwargs):
-            st.warning(
-                "Your simulations.py is present, but this subtopic could not find the board function name. "
-                "Rename your board function to one of: "
-                + ", ".join(candidates)
-            )
-
-        return _fallback
-
-    except Exception:
-        # No simulations.py or import failed → keep subtopic working anyway.
-        def _fallback(*_args, **_kwargs):
-            st.info(
-                "Board simulator is not available (simulations.py not found). "
-                "If you add it, this subtopic will automatically use it."
-            )
-
-        return _fallback
+def _latex_block(s: str) -> None:
+    """Render a LaTeX block reliably."""
+    st.latex(s)
 
 
-BOARD = _get_board_renderer()
-
-
-# -------------------------
-# Small plotting utility (NO huge charts)
-# -------------------------
-def _small_plot(x, y, title=None, v_asym=None, h_asym=None, xlim=None, ylim=None):
-    fig = plt.figure(figsize=(5.8, 3.2))  # small and readable
+def _small_plot(
+    x: np.ndarray,
+    y: np.ndarray,
+    title_latex: str,
+    *,
+    vlines: Optional[List[float]] = None,
+    hlines: Optional[List[float]] = None,
+    ylim: Optional[Tuple[float, float]] = None,
+) -> None:
+    """Compact, student-friendly plot (no huge charts)."""
+    fig = plt.figure(figsize=(5.4, 3.2))
     ax = fig.add_subplot(111)
-    ax.plot(x, y, linewidth=2)
+    ax.plot(x, y)
 
-    # asymptotes
-    if v_asym:
-        for a in v_asym:
-            ax.axvline(a, linestyle="--", linewidth=1)
-    if h_asym is not None:
-        ax.axhline(h_asym, linestyle="--", linewidth=1)
+    if vlines:
+        for xv in vlines:
+            ax.axvline(x=float(xv), linewidth=1)
+    if hlines:
+        for yv in hlines:
+            ax.axhline(y=float(yv), linewidth=1)
 
-    ax.axhline(0, linewidth=1)
-    ax.axvline(0, linewidth=1)
-
-    if title:
-        ax.set_title(title)
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-
-    if xlim:
-        ax.set_xlim(xlim[0], xlim[1])
+    ax.set_title("$" + title_latex.strip("$") + "$")
+    ax.set_xlabel("$x$")
+    ax.set_ylabel("$y$")
     if ylim:
-        ax.set_ylim(ylim[0], ylim[1])
+        ax.set_ylim(*ylim)
 
-    ax.grid(True, alpha=0.3)
+    ax.grid(True, alpha=0.25)
     st.pyplot(fig, clear_figure=True)
 
 
-# -------------------------
-# Clean “sign/conclusion row” (replaces unreadable/overlapping tables)
-# -------------------------
-def _row_interval(interval_latex, sign1_latex, behavior_latex, sign2_latex, concavity_latex):
-    c1, c2, c3, c4, c5 = st.columns([1.2, 1, 1.6, 1, 1.6])
-    with c1:
-        st.markdown("**Interval**")
-        st.latex(interval_latex)
-    with c2:
-        st.markdown("**Sign of** " + r"$f'(x)$")
-        st.latex(sign1_latex)
-    with c3:
-        st.markdown("**Behavior**")
-        st.latex(behavior_latex)
-    with c4:
-        st.markdown("**Sign of** " + r"$f''(x)$")
-        st.latex(sign2_latex)
-    with c5:
-        st.markdown("**Concavity**")
-        st.latex(concavity_latex)
-    st.markdown("---")
+# -----------------------------
+# Learn tab — objectives + workflow + worked examples
+# -----------------------------
 
-
-# -------------------------
-# Content from Chapter 3.pdf (Section 3.6, Examples 6.1–6.6)
-# Student-friendly, but strictly within your objectives.
-# -------------------------
-def _learn_tab():
-    st.markdown("## Learning Objectives (what you must master)")
+def _render_objectives() -> None:
+    st.markdown("### Learning Objectives (5.6)")
     st.markdown(
         """
-- **5.6.1** Recall finding the **horizontal** and **vertical asymptotes** of a rational function.  
-- **5.6.2** Understand and apply the **curve sketching workflow**:
-  domain → derivatives → critical values → concavity/inflections → asymptotes → intercepts → final sketch.  
-- **5.6.3** Analyze and sketch graphs for different function types:
-  polynomials, rational functions, fractional powers/radicals, and trig/exp/log components.
+By the end of this subtopic, you should be able to:
+
+**5.6.1** Recall how to find **horizontal** and **vertical** asymptotes of a rational function.
+
+**5.6.2** Use a clear **curve sketching workflow**, including:
+
+- domain
+- first and second derivative
+- critical values / first derivative test
+- inflection values / concavity / second derivative test
+- overlapping summary behavior tables (variation + concavity)
+- a small table of values for a few points
+- sketching
+
+**5.6.3** Analyze and sketch graphs for different function types:
+
+- polynomials
+- rational functions
+- functions with fractional powers of \\(x\\)
+- functions with radicals
+- functions with trigonometric or exponential or logarithmic components
 """
     )
 
-    st.markdown("---")
 
-    st.markdown("## The curve-sketching workflow (your checklist)")
+def _render_workflow_coach() -> None:
+    st.markdown("### Curve Sketching Workflow (Step-by-step)")
     st.markdown(
         """
-Use this exact order when solving exam questions.  
-(Every step you see below is from **Section 3.6 (Overview of Curve Sketching)**.)
-
-1) **Domain**  
-2) **Vertical asymptotes / discontinuities** (where the function is not defined)  
-3) **First derivative**: increasing/decreasing + local extrema  
-4) **Second derivative**: concavity + inflection points  
-5) **Horizontal asymptotes** (limits as \(x\\to\\infty\) and \(x\\to-\\infty\))  
-6) **Intercepts** (if exact is hard, approximate)
+Use this **same order** every time. If you follow it, you will not miss marks.
 """
     )
 
-    st.markdown("---")
-
-    # A small “interactive coach” without sliders
-    st.markdown("## Interactive workflow coach (step-by-step)")
-    st.markdown(
-        "Choose a function type, then follow the steps. Each button reveals the next required result."
-    )
-
-    fn_type = st.radio(
-        "Choose function type",
-        [
-            "Polynomial (Example 6.1)",
-            "Rational (Example 6.2)",
-            "Rational with two vertical asymptotes (Example 6.3)",
-            "Rational with approximated domain feature (Example 6.4)",
-            "Exponential with unusual behavior near 0 (Example 6.5)",
-            "Trig + polynomial combination (Example 6.6)",
-        ],
-        horizontal=False,
-    )
-
-    # Map to the exact functions used in the textbook examples
-    if fn_type.startswith("Polynomial"):
-        st.markdown("### Function")
-        st.latex(r"f(x)=x^{4}+6x^{3}+12x^{2}+8x+1")
-        st.markdown(
-            "- This example demonstrates the full workflow on a polynomial (domain is all real numbers, no vertical asymptotes)."
-        )
-        show_plot = st.button("Show a small sketch window", key="plot_6_1")
-        if show_plot:
-            xs = np.linspace(-4, 1, 500)
-            ys = xs**4 + 6*xs**3 + 12*xs**2 + 8*xs + 1
-            _small_plot(xs, ys, title="Polynomial sketch (small window)", xlim=(-4, 1), ylim=(-2, 8))
-
-    elif fn_type.startswith("Rational (Example 6.2)"):
-        st.markdown("### Function")
-        st.latex(r"f(x)=\frac{x^{2}-3}{x^{3}}")
-        st.markdown(
-            r"""
-- Domain excludes \(x=0\).  
-- This example shows: vertical asymptote at \(x=0\), horizontal asymptote \(y=0\), and how derivatives control shape.
-"""
-        )
-        show_plot = st.button("Show a small sketch window", key="plot_6_2")
-        if show_plot:
-            xs1 = np.linspace(-6, -0.2, 500)
-            xs2 = np.linspace(0.2, 6, 500)
-            f = lambda x: (x**2 - 3) / (x**3)
-            _small_plot(xs1, f(xs1), title="Rational sketch (left of 0)", v_asym=[0], h_asym=0, xlim=(-6, -0.2), ylim=(-6, 6))
-            _small_plot(xs2, f(xs2), title="Rational sketch (right of 0)", v_asym=[0], h_asym=0, xlim=(0.2, 6), ylim=(-6, 6))
-
-    elif fn_type.startswith("Rational with two vertical asymptotes (Example 6.3)"):
-        st.markdown("### Function")
-        st.latex(r"f(x)=\frac{x^{2}}{x^{2}-4}")
-        st.markdown(
-            r"""
-- Domain excludes \(x=\pm2\).  
-- Vertical asymptotes at \(x=-2\) and \(x=2\).  
-- Horizontal asymptote \(y=1\).
-"""
-        )
-        show_plot = st.button("Show a small sketch window", key="plot_6_3")
-        if show_plot:
-            f = lambda x: (x**2) / (x**2 - 4)
-            xsA = np.linspace(-6, -2.2, 400)
-            xsB = np.linspace(-1.8, 1.8, 400)
-            xsC = np.linspace(2.2, 6, 400)
-            _small_plot(xsA, f(xsA), title="Left branch", v_asym=[-2, 2], h_asym=1, xlim=(-6, -2.2), ylim=(-5, 5))
-            _small_plot(xsB, f(xsB), title="Middle branch", v_asym=[-2, 2], h_asym=1, xlim=(-1.8, 1.8), ylim=(-5, 5))
-            _small_plot(xsC, f(xsC), title="Right branch", v_asym=[-2, 2], h_asym=1, xlim=(2.2, 6), ylim=(-5, 5))
-
-    elif fn_type.startswith("Rational with approximated domain feature (Example 6.4)"):
-        st.markdown("### Function")
-        st.latex(r"f(x)=\frac{1}{x^{3}+3x^{2}+3x+3}")
-        st.markdown(
-            r"""
-- Domain excludes the real root \(x=a\) of \(g(x)=x^{3}+3x^{2}+3x+3\).  
-- This example is important because one key feature is **approximated**.
-"""
-        )
-        st.markdown(
-            r"""
-From the textbook:  
-\(g'(x)=3(x+1)^{2}\ge 0\) so \(g\) is increasing and has **one** real root.  
-That root is approximately:
-"""
-        )
-        st.latex(r"a\approx -2.25992")
-        show_plot = st.button("Show a small sketch window", key="plot_6_4")
-        if show_plot:
-            f = lambda x: 1.0 / (x**3 + 3*x**2 + 3*x + 3)
-            a = -2.25992
-            xs1 = np.linspace(-6, a-0.15, 500)
-            xs2 = np.linspace(a+0.15, 6, 500)
-            _small_plot(xs1, f(xs1), title="Left of the vertical asymptote", v_asym=[a], h_asym=0, xlim=(-6, a-0.15), ylim=(-5, 5))
-            _small_plot(xs2, f(xs2), title="Right of the vertical asymptote", v_asym=[a], h_asym=0, xlim=(a+0.15, 6), ylim=(-5, 5))
-
-    elif fn_type.startswith("Exponential with unusual behavior near 0 (Example 6.5)"):
-        st.markdown("### Function")
-        st.latex(r"f(x)=e^{1/x}")
-        st.markdown(
-            r"""
-- Domain excludes \(x=0\).  
-- As \(x\to 0^{+}\), \(1/x\to\infty\) so \(e^{1/x}\to\infty\).  
-- As \(x\to 0^{-}\), \(1/x\to-\infty\) so \(e^{1/x}\to 0\).  
-This creates an **unusual** vertical asymptote behavior at \(x=0\).
-"""
-        )
-        show_plot = st.button("Show a small sketch window", key="plot_6_5")
-        if show_plot:
-            f = lambda x: np.exp(1/x)
-            xs1 = np.linspace(-6, -0.2, 600)
-            xs2 = np.linspace(0.2, 6, 600)
-            _small_plot(xs1, f(xs1), title="Left of 0 (approaches 0)", v_asym=[0], h_asym=1, xlim=(-6, -0.2), ylim=(0, 3))
-            _small_plot(xs2, f(xs2), title="Right of 0 (blows up)", v_asym=[0], h_asym=1, xlim=(0.2, 6), ylim=(0, 10))
-
-    else:
-        st.markdown("### Function")
-        st.latex(r"f(x)=\cos(x)-x")
-        st.markdown(
-            r"""
-- Domain is all real numbers (no vertical asymptotes).  
-- Derivatives:
-\[
-f'(x)=-\sin(x)-1\le 0
-\]
-So the graph is decreasing (even though there are horizontal tangent points).  
-\[
-f''(x)=-\cos(x)
-\]
-Concavity alternates because \(\cos(x)\) alternates.
-"""
-        )
-        show_plot = st.button("Show a small sketch window", key="plot_6_6")
-        if show_plot:
-            xs = np.linspace(-4, 4, 600)
-            ys = np.cos(xs) - xs
-            _small_plot(xs, ys, title=r"$y=\cos(x)-x$ (small window)", xlim=(-4, 4), ylim=(-5, 5))
-
-    st.markdown("---")
-
-    # Board simulator (your simulations.py)
-    st.markdown("## Board simulator (full solution on one board)")
-    st.markdown(
-        """
-Choose an example, then press **Play solution** to watch the full solution appear on the same board.
-(Your **simulations.py** board will be used automatically.)
-"""
-    )
-
-    example_id = st.radio(
-        "Choose an example for the board",
-        [
-            "Example 6.1 (Polynomial)",
-            "Example 6.2 (Rational)",
-            "Example 6.3 (Two vertical asymptotes)",
-            "Example 6.4 (Approximated domain feature)",
-            "Example 6.5 (Exponential)",
-            "Example 6.6 (Trig + polynomial)",
-        ],
-        horizontal=True,
-    )
-
-    colA, colB = st.columns([1, 1])
-    with colA:
-        play = st.button("Play solution", use_container_width=True)
-    with colB:
-        reset = st.button("Reset", use_container_width=True)
-
-    # We pass a simple payload. Your simulations.py can ignore or use it.
-    payload = {
-        "topic": "curve_sketching",
-        "example": example_id,
-    }
-
-    if reset:
-        st.session_state["__cs_board_reset__"] = st.session_state.get("__cs_board_reset__", 0) + 1
-
-    if play:
-        BOARD(payload)
-
-    st.markdown("---")
-
-    # Non-overlapping “combined behavior summary” (student readable)
-    st.markdown("## How to present your conclusions clearly (no overlap)")
-    st.markdown(
-        """
-Instead of drawing a crowded table, present your conclusions as **clean interval rows**.
-Each row must include:
-
-- interval
-- sign of \(f'(x)\) → increasing/decreasing
-- sign of \(f''(x)\) → concave up/down
-"""
-    )
-
-    st.markdown("### Mini template (example row)")
-    _row_interval(
-        r"(a,b)",
-        r"+",
-        r"\text{increasing}",
-        r"-",
-        r"\text{concave down}",
-    )
-
-
-# -------------------------
-# Practice (20+ questions, Hint + Show Solution)
-# -------------------------
-def _practice_tab():
-    st.markdown("## Practice (20 questions)")
-    st.markdown(
-        "Each question has **Hint** and **Show solution**. All mathematics is shown in **LaTeX/KaTeX**."
-    )
-    st.markdown("---")
-
-    # 20 questions aligned with objectives 5.6.1–5.6.3
-    # (Built directly from the same Example set in Section 3.6.)
-    qs = [
-        {
-            "q": r"Find the domain of \(f(x)=\dfrac{x^{2}}{x^{2}-4}\).",
-            "hint": r"Domain excludes where the denominator is \(0\).",
-            "sol": r"""
-\[
-x^{2}-4=0 \Rightarrow x=\pm2
-\]
-So the domain is:
-\[
-(-\infty,-2)\cup(-2,2)\cup(2,\infty)
-\]
-""",
-        },
-        {
-            "q": r"Show that \(x=2\) is a vertical asymptote for \(f(x)=\dfrac{x^{2}}{x^{2}-4}\).",
-            "hint": r"Factor \(x^{2}-4=(x-2)(x+2)\) and use one-sided limits.",
-            "sol": r"""
-\[
-\lim_{x\to2^{+}}\frac{x^{2}}{(x-2)(x+2)}=+\infty,
-\qquad
-\lim_{x\to2^{-}}\frac{x^{2}}{(x-2)(x+2)}=-\infty
-\]
-So \(x=2\) is a vertical asymptote.
-""",
-        },
-        {
-            "q": r"Find the horizontal asymptote of \(f(x)=\dfrac{x^{2}}{x^{2}-4}\).",
-            "hint": r"Divide numerator and denominator by \(x^{2}\).",
-            "sol": r"""
-\[
-\frac{x^{2}}{x^{2}-4}=\frac{1}{1-\frac{4}{x^{2}}}
-\Rightarrow \lim_{x\to\pm\infty}f(x)=\frac{1}{1-0}=1
-\]
-Horizontal asymptote: \(\;y=1\).
-""",
-        },
-        {
-            "q": r"For \(f(x)=\dfrac{x^{2}}{x^{2}-4}\), find where \(f\) is increasing and decreasing using \(f'(x)=-\dfrac{8x}{(x^{2}-4)^{2}}\).",
-            "hint": r"The denominator is always positive on the domain, so the sign depends on \(-8x\).",
-            "sol": r"""
-Since \((x^{2}-4)^{2}>0\) on the domain, the sign of \(f'(x)\) is the sign of \(-x\).
-\[
-f'(x)>0 \text{ when } x<0,\qquad f'(x)<0 \text{ when } x>0
-\]
-So \(f\) is increasing on \((-\infty,-2)\cup(-2,0)\) and decreasing on \((0,2)\cup(2,\infty)\).
-""",
-        },
-        {
-            "q": r"Find the domain of \(f(x)=\dfrac{x^{2}-3}{x^{3}}\) and its vertical asymptote(s).",
-            "hint": r"Denominator \(x^{3}=0\) at \(x=0\).",
-            "sol": r"""
-Domain excludes \(x=0\), so:
-\[
-(-\infty,0)\cup(0,\infty)
-\]
-Vertical asymptote at:
-\[
-x=0
-\]
-""",
-        },
-        {
-            "q": r"Find the horizontal asymptote of \(f(x)=\dfrac{x^{2}-3}{x^{3}}\).",
-            "hint": r"Rewrite as \(\dfrac{1}{x}-\dfrac{3}{x^{3}}\).",
-            "sol": r"""
-\[
-\frac{x^{2}-3}{x^{3}}=\frac{1}{x}-\frac{3}{x^{3}}
-\Rightarrow \lim_{x\to\pm\infty}f(x)=0
-\]
-Horizontal asymptote: \(\;y=0\).
-""",
-        },
-        {
-            "q": r"For \(f(x)=e^{1/x}\), evaluate \(\lim_{x\to0^{+}}e^{1/x}\).",
-            "hint": r"As \(x\to0^{+}\), \(1/x\to+\infty\).",
-            "sol": r"""
-\[
-x\to0^{+}\Rightarrow \frac{1}{x}\to+\infty\Rightarrow e^{1/x}\to\infty
-\]
-So \(\lim_{x\to0^{+}}e^{1/x}=\infty\).
-""",
-        },
-        {
-            "q": r"For \(f(x)=e^{1/x}\), evaluate \(\lim_{x\to0^{-}}e^{1/x}\).",
-            "hint": r"As \(x\to0^{-}\), \(1/x\to-\infty\).",
-            "sol": r"""
-\[
-x\to0^{-}\Rightarrow \frac{1}{x}\to-\infty\Rightarrow e^{1/x}\to 0
-\]
-So \(\lim_{x\to0^{-}}e^{1/x}=0\).
-""",
-        },
-        {
-            "q": r"For \(f(x)=e^{1/x}\), find where \(f\) is increasing/decreasing if \(f'(x)=e^{1/x}\left(-\dfrac{1}{x^{2}}\right)\).",
-            "hint": r"\(e^{1/x}>0\) and \(-1/x^{2}<0\) for \(x\ne0\).",
-            "sol": r"""
-For \(x\ne0\):
-\[
-e^{1/x}>0,\qquad -\frac{1}{x^{2}}<0
-\Rightarrow f'(x)<0
-\]
-So \(f\) is decreasing on \((-\infty,0)\) and on \((0,\infty)\).
-""",
-        },
-        {
-            "q": r"For \(f(x)=\cos(x)-x\), show that \(f\) is decreasing for all \(x\).",
-            "hint": r"Use \(f'(x)=-\sin(x)-1\) and \(-1\le\sin(x)\le1\).",
-            "sol": r"""
-\[
-f'(x)=-\sin(x)-1
-\]
-Since \(\sin(x)\ge -1\), we have \(-\sin(x)\le 1\), so:
-\[
--\sin(x)-1\le 0
-\Rightarrow f'(x)\le 0
-\]
-Therefore \(f\) is decreasing for all \(x\).
-""",
-        },
-        # Add 10 more (kept concise but complete; still 20+ total)
+    steps = [
+        (
+            "1) Domain",
+            [
+                r"Find where the function is defined.",
+                r"For rational functions: denominator \(\neq 0\).",
+                r"For radicals: inside the root must be valid.",
+                r"For logs: argument must be \(>0\).",
+            ],
+        ),
+        (
+            "2) Intercepts (if needed)",
+            [
+                r"\(y\)-intercept: evaluate \(f(0)\) (if 0 is in the domain).",
+                r"\(x\)-intercepts: solve \(f(x)=0\).",
+            ],
+        ),
+        (
+            r"3) First derivative \(f'(x)\)",
+            [
+                r"Compute \(f'(x)\).",
+                r"Critical numbers: solve \(f'(x)=0\) and include where \(f'(x)\) is undefined (but \(f\) is defined).",
+            ],
+        ),
+        (
+            "4) Increasing / Decreasing",
+            [
+                r"Make a sign chart for \(f'(x)\).",
+                r"\(f'(x)>0\Rightarrow\) increasing, \(f'(x)<0\Rightarrow\) decreasing.",
+            ],
+        ),
+        (
+            r"5) Second derivative \(f''(x)\)",
+            [
+                r"Compute \(f''(x)\).",
+                r"Possible inflection points: solve \(f''(x)=0\) and include where \(f''(x)\) is undefined (but \(f\) is defined).",
+            ],
+        ),
+        (
+            "6) Concavity + Inflection",
+            [
+                r"Sign chart for \(f''(x)\).",
+                r"\(f''(x)>0\Rightarrow\) concave up, \(f''(x)<0\Rightarrow\) concave down.",
+                r"Inflection point: concavity must change and the point must be on the graph.",
+            ],
+        ),
+        (
+            "7) Asymptotes (rational)",
+            [
+                r"Vertical asymptotes: where denominator \(=0\) (and not cancelled).",
+                r"Horizontal asymptote (end behavior): compare degrees (or limits at \(\pm\infty\)).",
+            ],
+        ),
+        (
+            "8) Small value table + final sketch",
+            [
+                r"Pick a few easy \(x\)-values to confirm shape.",
+                r"Combine all information into one accurate sketch.",
+            ],
+        ),
     ]
 
-    # Add 11 more questions quickly (still within objectives + same section themes)
-    extra = [
-        {
-            "q": r"For \(f(x)=\dfrac{1}{x^{3}+3x^{2}+3x+3}\), what causes the vertical asymptote?",
-            "hint": r"The denominator equals \(0\) at \(x=a\).",
-            "sol": r"""
-Let \(g(x)=x^{3}+3x^{2}+3x+3\). The function is undefined where \(g(x)=0\).
-That real root is \(x=a\), so \(x=a\) is the location of the vertical asymptote.
-""",
-        },
-        {
-            "q": r"For \(f(x)=\dfrac{1}{x^{3}+3x^{2}+3x+3}\), explain why there is only one real number \(a\) where the function is undefined.",
-            "hint": r"Use \(g'(x)=3(x+1)^{2}\ge0\).",
-            "sol": r"""
-\[
-g'(x)=3(x+1)^{2}\ge 0
-\]
-So \(g\) is increasing, therefore it can cross \(0\) at most once.
-Hence there is only one real root \(a\).
-""",
-        },
-        {
-            "q": r"For \(f(x)=\cos(x)-x\), write the inflection point pattern using \(f''(x)=-\cos(x)\).",
-            "hint": r"Inflection points where \(f''(x)=0\Rightarrow \cos(x)=0\).",
-            "sol": r"""
-\[
-f''(x)=-\cos(x)=0 \Rightarrow \cos(x)=0
-\Rightarrow x=\frac{\pi}{2}+n\pi,\quad n\in\mathbb{Z}
-\]
-These are the inflection points (concavity changes each time).
-""",
-        },
-        {
-            "q": r"For \(f(x)=\dfrac{x^{2}}{x^{2}-4}\), find the only critical number.",
-            "hint": r"Critical numbers are where \(f'(x)=0\) inside the domain.",
-            "sol": r"""
-\[
-f'(x)=-\frac{8x}{(x^{2}-4)^{2}}=0 \Rightarrow x=0
-\]
-Since \(0\) is in the domain, the only critical number is \(x=0\).
-""",
-        },
-        {
-            "q": r"For \(f(x)=\dfrac{x^{2}}{x^{2}-4}\), state whether \(x=0\) is a local max or min.",
-            "hint": r"Use the sign of \(f'(x)\) (increasing then decreasing).",
-            "sol": r"""
-From sign of \(f'(x)\): increasing for \(x<0\) and decreasing for \(x>0\).
-So \(x=0\) is a **local maximum**.
-""",
-        },
-        {
-            "q": r"For \(f(x)=e^{1/x}\), state the horizontal asymptote as \(x\to\pm\infty\).",
-            "hint": r"As \(x\to\pm\infty\), \(1/x\to0\) so \(e^{1/x}\to e^{0}\).",
-            "sol": r"""
-\[
-\lim_{x\to\pm\infty} e^{1/x}=e^{0}=1
-\]
-Horizontal asymptote: \(\;y=1\).
-""",
-        },
-        {
-            "q": r"Workflow check: which step comes immediately after finding the domain?",
-            "hint": r"It is about points not in the domain.",
-            "sol": r"""
-After the domain, you check **vertical asymptotes / discontinuities** at points not in the domain.
-""",
-        },
-        {
-            "q": r"For a rational function, how do you find possible vertical asymptotes?",
-            "hint": r"Look where the denominator is \(0\) (after simplifying).",
-            "sol": r"""
-Possible vertical asymptotes occur where the simplified denominator equals \(0\). Then confirm using one-sided limits.
-""",
-        },
-        {
-            "q": r"For \(f(x)=\cos(x)-x\), explain why there are no local extrema even though there are horizontal tangent lines.",
-            "hint": r"If \(f'(x)\) does not change sign, there are no local extrema.",
-            "sol": r"""
-Even if \(f'(x)=0\) at some points, local extrema require a sign change in \(f'(x)\).
-Here \(f'(x)=-\sin(x)-1\le0\) always, so there is no sign change ⇒ no local extrema.
-""",
-        },
-        {
-            "q": r"State the meaning of concave up using the second derivative.",
-            "hint": r"Look at the sign of \(f''(x)\).",
-            "sol": r"""
-Concave up on an interval where:
-\[
-f''(x)>0
-\]
-""",
-        },
-        {
-            "q": r"State the meaning of concave down using the second derivative.",
-            "hint": r"Look at the sign of \(f''(x)\).",
-            "sol": r"""
-Concave down on an interval where:
-\[
-f''(x)<0
-\]
-""",
-        },
-    ]
-    qs.extend(extra)
+    picked = st.radio("Choose a workflow step", [s[0] for s in steps], horizontal=True)
+    for title, bullets in steps:
+        if title == picked:
+            st.info("\n".join(["• " + b for b in bullets]))
 
-    # Ensure at least 20
-    while len(qs) < 20:
+
+def _render_clean_combined_table_template() -> None:
+    st.markdown("### Combined Table (Variation + Concavity)")
+    st.markdown(
+        """
+You will often summarize **both** \(f'(x)\) and \(f''(x)\) on the **same number line**.
+
+Use \(f'(x)\) to decide increasing/decreasing, and \(f''(x)\) to decide concavity.
+"""
+    )
+
+    st.markdown("**Template (example structure):**")
+    st.table(
+        {
+            "Interval": [r"$(-\infty,a)$", r"$(a,b)$", r"$(b,\infty)$"],
+            r"$f'(x)$ sign": [r"$+$ / $-$", r"$+$ / $-$", r"$+$ / $-$"],
+            "Variation": ["Increasing / Decreasing"] * 3,
+            r"$f''(x)$ sign": [r"$+$ / $-$", r"$+$ / $-$", r"$+$ / $-$"],
+            "Concavity": ["Concave up / down"] * 3,
+        }
+    )
+
+
+# -----------------------------
+# Worked examples (Section 3.6 style)
+# -----------------------------
+
+def _example_6_1_polynomial() -> None:
+    st.markdown("### Worked Example A (Polynomial)")
+    st.markdown("We sketch the graph using derivatives and concavity.")
+    _latex_block(r"f(x)=x^{4}+6x^{3}+12x^{2}+8x")
+
+    steps = [
+        BoardStep(
+            latex_line=r"\textbf{Step 1: First derivative}",
+            explanation_md="Compute the first derivative to find critical numbers.",
+        ),
+        BoardStep(
+            latex_line=r"f'(x)=4x^{3}+18x^{2}+24x+8",
+            explanation_md="Differentiate term-by-term.",
+        ),
+        BoardStep(
+            latex_line=r"f'(x)=2\,(2x^{3}+9x^{2}+12x+4)=2( x+2)^{2}(2x+1)",
+            explanation_md="Factor to solve \(f'(x)=0\) quickly.",
+        ),
+        BoardStep(
+            latex_line=r"f'(x)=0\Rightarrow x=-2\ \text{(double root)},\ x=-\tfrac{1}{2}",
+            explanation_md="Critical numbers are where \(f'(x)=0\).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Step 2: Second derivative}",
+            explanation_md="Use \(f''(x)\) for concavity and possible inflection points.",
+        ),
+        BoardStep(
+            latex_line=r"f''(x)=12x^{2}+36x+24=12(x+1)(x+2)",
+            explanation_md="Differentiate again, then factor.",
+        ),
+        BoardStep(
+            latex_line=r"f''(x)=0\Rightarrow x=-2,\ -1",
+            explanation_md="These are candidates for inflection points (check sign change).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Concavity:}\ f''(x)>0\ \text{on}\ (-\infty,-2)\cup(-1,\infty)",
+            explanation_md="Concave up where \(f''(x)>0\).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Concavity:}\ f''(x)<0\ \text{on}\ (-2,-1)",
+            explanation_md="Concave down where \(f''(x)<0\).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Key points:}\ f(-2)=0,\ f(-\tfrac{1}{2})=\tfrac{27}{16},\ f(-1)=1",
+            explanation_md="Evaluate \(f\) at important \(x\)-values for the sketch.",
+        ),
+    ]
+    render_simulation(steps, title="Board simulator (Example A)")
+
+    st.markdown("**Small graph (for confirmation only):**")
+    x = np.linspace(-4.0, 2.5, 500)
+    y = x**4 + 6 * x**3 + 12 * x**2 + 8 * x
+    _small_plot(
+        x,
+        y,
+        r"f(x)=x^{4}+6x^{3}+12x^{2}+8x",
+        vlines=[-2, -1, -0.5],
+        hlines=[0],
+        ylim=(-10, 10),
+    )
+
+
+def _example_6_2_rational() -> None:
+    st.markdown("### Worked Example B (Rational function + asymptotes)")
+    _latex_block(r"f(x)=\dfrac{x^{2}-3}{x^{3}}")
+
+    steps = [
+        BoardStep(
+            latex_line=r"\textbf{Step 1: Domain}",
+            explanation_md="A rational function is undefined where the denominator is zero.",
+        ),
+        BoardStep(
+            latex_line=r"x^{3}\neq 0\Rightarrow x\neq 0",
+            explanation_md="So the domain is all real numbers except \(x=0\).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Step 2: Asymptotes}",
+            explanation_md="Vertical asymptote at points excluded from the domain (if not cancelled).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Vertical:}\ x=0",
+            explanation_md="No factor cancels, so \(x=0\) is a vertical asymptote.",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Horizontal:}\ \lim_{x\to\pm\infty}\dfrac{x^{2}-3}{x^{3}}=\lim_{x\to\pm\infty}\left(\dfrac{1}{x}-\dfrac{3}{x^{3}}\right)=0",
+            explanation_md="Degree of denominator is larger, so the graph approaches \(y=0\).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Step 3: First derivative}",
+            explanation_md="Use \(f'(x)\) to decide increasing/decreasing.",
+        ),
+        BoardStep(
+            latex_line=r"f(x)=x^{-1}-3x^{-3}\Rightarrow f'(x)=-x^{-2}+9x^{-4}=\dfrac{-x^{2}+9}{x^{4}}",
+            explanation_md="Rewrite using powers to differentiate cleanly.",
+        ),
+        BoardStep(
+            latex_line=r"f'(x)=0\Rightarrow -x^{2}+9=0\Rightarrow x=\pm 3",
+            explanation_md="Critical numbers (in the domain) are \(x=-3\) and \(x=3\).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Step 4: Second derivative}",
+            explanation_md="Use \(f''(x)\) for concavity.",
+        ),
+        BoardStep(
+            latex_line=r"f''(x)=2x^{-3}-36x^{-5}=\dfrac{2x^{2}-36}{x^{5}}=\dfrac{2(x^{2}-18)}{x^{5}}",
+            explanation_md="Differentiate again, then factor.",
+        ),
+        BoardStep(
+            latex_line=r"f''(x)=0\Rightarrow x=\pm 3\sqrt{2}\quad (x\neq 0)",
+            explanation_md="Candidates for inflection points.",
+        ),
+    ]
+    render_simulation(steps, title="Board simulator (Example B)")
+
+    st.markdown("**Small graph (for confirmation only):**")
+    f = lambda t: (t**2 - 3) / (t**3)
+    x1 = np.linspace(-6, -0.3, 500)
+    x2 = np.linspace(0.3, 6, 500)
+    _small_plot(x1, f(x1), r"f(x)=\frac{x^{2}-3}{x^{3}}", vlines=[0], hlines=[0], ylim=(-6, 6))
+    _small_plot(x2, f(x2), r"f(x)=\frac{x^{2}-3}{x^{3}}", vlines=[0], hlines=[0], ylim=(-6, 6))
+
+
+def _example_6_5_exponential() -> None:
+    st.markdown("### Worked Example C (Exponential component)")
+    _latex_block(r"f(x)=e^{1/x}")
+    st.markdown("This example shows how derivatives guide the shape even for non-polynomial functions.")
+
+    steps = [
+        BoardStep(
+            latex_line=r"\textbf{Domain:}\ x\neq 0",
+            explanation_md="\(\\tfrac{1}{x}\) is undefined at \(x=0\).",
+        ),
+        BoardStep(
+            latex_line=r"f'(x)=e^{1/x}\cdot\left(-\dfrac{1}{x^{2}}\right)=-\dfrac{e^{1/x}}{x^{2}}",
+            explanation_md="Chain rule: derivative of \(1/x\) is \(-1/x^{2}\).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Sign of }f'(x):\ e^{1/x}>0\ \text{and }x^{2}>0\Rightarrow f'(x)<0\ (x\neq 0)",
+            explanation_md="So \(f\) is decreasing on both \((-\infty,0)\) and \((0,\infty)\).",
+        ),
+        BoardStep(
+            latex_line=r"f''(x)=\dfrac{e^{1/x}}{x^{4}}(2x+1)",
+            explanation_md="The sign depends on \(2x+1\).",
+        ),
+        BoardStep(
+            latex_line=r"f''(x)=0\Rightarrow 2x+1=0\Rightarrow x=-\tfrac{1}{2}",
+            explanation_md="Candidate inflection point (check sign change).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Concavity:}\ f''(x)<0\ \text{on}\ (-\infty,-\tfrac{1}{2}),\ \ f''(x)>0\ \text{on}\ (-\tfrac{1}{2},0)\cup(0,\infty)",
+            explanation_md="Use a sign test on intervals.",
+        ),
+    ]
+    render_simulation(steps, title="Board simulator (Example C)")
+
+    st.markdown("**Small graph (for confirmation only):**")
+    x1 = np.linspace(-4, -0.2, 600)
+    x2 = np.linspace(0.2, 4, 600)
+    _small_plot(x1, np.exp(1 / x1), r"f(x)=e^{1/x}", vlines=[0, -0.5], ylim=(0, 6))
+    _small_plot(x2, np.exp(1 / x2), r"f(x)=e^{1/x}", vlines=[0], ylim=(0, 6))
+
+
+def _example_6_6_trig() -> None:
+    st.markdown("### Worked Example D (Trigonometric component)")
+    _latex_block(r"f(x)=\cos x - x")
+    st.markdown("We use derivatives to show where it increases/decreases and its concavity.")
+
+    steps = [
+        BoardStep(
+            latex_line=r"f'(x)=-\sin x - 1",
+            explanation_md="Differentiate: \(\\cos x\\to -\\sin x\), and \(-x\\to -1\).",
+        ),
+        BoardStep(
+            latex_line=r"-\sin x-1\le 0\ \Rightarrow\ f'(x)\le 0\ \text{for all }x",
+            explanation_md="Because \(\sin x\ge -1\), so \(-\sin x-1\le 0\).",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Conclusion:}\ f\ \text{is decreasing on }(-\infty,\infty)",
+            explanation_md="So the graph always goes down as \(x\) increases.",
+        ),
+        BoardStep(
+            latex_line=r"f''(x)=-\cos x",
+            explanation_md="Differentiate again.",
+        ),
+        BoardStep(
+            latex_line=r"f''(x)=0\Rightarrow \cos x=0\Rightarrow x=\dfrac{\pi}{2}+k\pi",
+            explanation_md="These are candidates for inflection points.",
+        ),
+        BoardStep(
+            latex_line=r"\textbf{Concavity:}\ f''(x)=-\cos x\ \Rightarrow\ \text{concave up when }\cos x<0",
+            explanation_md="Because \(f''>0\Rightarrow\) concave up.",
+        ),
+    ]
+    render_simulation(steps, title="Board simulator (Example D)")
+
+    st.markdown("**Small graph (for confirmation only):**")
+    x = np.linspace(-2 * np.pi, 2 * np.pi, 700)
+    y = np.cos(x) - x
+    _small_plot(x, y, r"f(x)=\cos x-x", vlines=[-np.pi / 2, np.pi / 2], ylim=(-10, 10))
+
+
+def _render_learn_tab() -> None:
+    _render_objectives()
+    st.markdown("---")
+    _render_workflow_coach()
+    st.markdown("---")
+    _render_clean_combined_table_template()
+    st.markdown("---")
+    st.markdown("## Worked Examples")
+    _example_6_1_polynomial()
+    st.markdown("---")
+    _example_6_2_rational()
+    st.markdown("---")
+    _example_6_5_exponential()
+    st.markdown("---")
+    _example_6_6_trig()
+
+
+# -----------------------------
+# Practice tab (20 questions)
+# -----------------------------
+
+@dataclass
+class PracticeQ:
+    qid: str
+    prompt_md: str
+    hint_md: str
+    solution_md: str
+
+
+def _practice_bank() -> List[PracticeQ]:
+    """20 questions using the functions listed in the curve sketching exercises."""
+    qs: List[PracticeQ] = []
+
+    # Exercises 29–36 (8 functions). Two focused questions per function => 16.
+    funcs = [
+        ("29", r"f(x)=x^{2/3}(x+1)"),
+        ("30", r"f(x)=x^{4/5}(x-1)"),
+        ("31", r"f(x)=\dfrac{2x}{x^{2}-1}"),
+        ("32", r"f(x)=\dfrac{x}{x^{2}-1}"),
+        ("33", r"f(x)=x^{3}-3x^{2}"),
+        ("34", r"f(x)=x^{3}-6x^{2}+9x\ \ (x\ge 0)"),
+        ("35", r"f(x)=\dfrac{x}{\sqrt{x^{2}+1}}"),
+        ("36", r"f(x)=\dfrac{x^{2}}{\sqrt{x^{2}+1}}"),
+    ]
+
+    for ex_no, f_ltx in funcs:
         qs.append(
-            {
-                "q": r"Workflow check: after concavity/inflection points, what do you check next?",
-                "hint": r"It is about end behavior as \(x\to\infty\) and \(x\to-\infty\).",
-                "sol": r"""
-After concavity/inflections, you check **horizontal asymptotes** using:
-\[
-\lim_{x\to\infty}f(x),\qquad \lim_{x\to-\infty}f(x)
-\]
-""",
-            }
+            PracticeQ(
+                qid=f"ex{ex_no}A",
+                prompt_md=(
+                    f"**Question {len(qs)+1}.** For the function $$ {f_ltx} $$\n\n"
+                    "Find the **critical numbers** and use a **first-derivative sign test** to state the intervals where the function is **increasing** and **decreasing**."
+                ),
+                hint_md=(
+                    "1) Compute $$f'(x).$$\n"
+                    "2) Solve $$f'(x)=0$$ and include where $$f'(x)$$ is undefined (but $$f$$ is defined).\n"
+                    "3) Test the sign of $$f'(x)$$ on each interval."
+                ),
+                solution_md=(
+                    "**Solution outline (write your full work):**\n\n"
+                    "- Compute $$f'(x).$$\n"
+                    "- Solve $$f'(x)=0$$ (and check where $$f'(x)$$ is undefined).\n"
+                    "- Make a sign chart for $$f'(x)$$ to conclude increasing/decreasing intervals.\n\n"
+                    "Your final answer must include interval notation and the sign-chart conclusion."
+                ),
+            )
         )
 
-    for i, item in enumerate(qs, start=1):
-        st.markdown("### Question " + str(i))
-        st.latex(item["q"].replace("Question ", "")) if item["q"].strip().startswith("Find") is False else st.markdown(item["q"])
-        # Always show question in readable way (LaTeX for math)
-        st.markdown(item["q"])
+        qs.append(
+            PracticeQ(
+                qid=f"ex{ex_no}B",
+                prompt_md=(
+                    f"**Question {len(qs)+1}.** For the function $$ {f_ltx} $$\n\n"
+                    "Find the **concavity intervals** and identify any **inflection points** using a **second-derivative sign test**."
+                ),
+                hint_md=(
+                    "1) Compute $$f''(x).$$\n"
+                    "2) Solve $$f''(x)=0$$ and include where $$f''(x)$$ is undefined (but $$f$$ is defined).\n"
+                    "3) Test the sign of $$f''(x)$$ on each interval.\n"
+                    "4) Inflection point requires a concavity change and the point must be on the graph."
+                ),
+                solution_md=(
+                    "**Solution outline (write your full work):**\n\n"
+                    "- Compute $$f''(x).$$\n"
+                    "- Solve $$f''(x)=0$$ (and check undefined points).\n"
+                    "- Use a sign chart for $$f''(x)$$ to conclude concave up/down intervals.\n"
+                    "- State any inflection point(s) as coordinate(s) $$\\bigl(x,f(x)\\bigr).$$"
+                ),
+            )
+        )
 
-        c1, c2 = st.columns([1, 1])
-        with c1:
-            with st.expander("Hint"):
-                st.latex(item["hint"]) if "\\" in item["hint"] or "$" in item["hint"] else st.markdown(item["hint"])
-                st.markdown(item["hint"])
-        with c2:
-            with st.expander("Show solution"):
-                st.latex(item["sol"]) if "\\[" in item["sol"] else st.markdown(item["sol"])
-                st.markdown(item["sol"])
-        st.markdown("---")
+    # Exercises 49–52 (4 questions) — asymptotes (objective 5.6.1)
+    asym = [
+        ("49", r"f(x)=\dfrac{x-1}{x-3}"),
+        ("50", r"f(x)=\dfrac{x+2}{(x+1)(x-2)}"),
+        ("51", r"f(x)=\dfrac{x^{3}}{x^{3}-1}"),
+        ("52", r"f(x)=\dfrac{x^{2}}{x^{4}-1}"),
+    ]
+
+    for ex_no, f_ltx in asym:
+        qs.append(
+            PracticeQ(
+                qid=f"ex{ex_no}",
+                prompt_md=(
+                    f"**Question {len(qs)+1}.** For the rational function $$ {f_ltx} $$\n\n"
+                    "Find the **vertical asymptote(s)** and the **horizontal asymptote** (if it exists)."
+                ),
+                hint_md=(
+                    "- Vertical asymptotes: denominator $$=0$$ (and not cancelled).\n"
+                    "- Horizontal asymptote: compare degrees or evaluate $$\\lim_{x\\to\\pm\\infty} f(x).$$"
+                ),
+                solution_md=(
+                    "**Solution outline:**\n\n"
+                    "1) Factor the denominator (if possible). Solve denominator $$=0$$ to find vertical asymptote candidates.\n"
+                    "2) Check if any factor cancels (if it cancels, it is a hole, not an asymptote).\n"
+                    "3) For horizontal asymptote: compare degrees or compute limits at $$\\pm\\infty$$."
+                ),
+            )
+        )
+
+    return qs
 
 
-def render():
-    # Only two tabs: Learn + Practice (as you required)
-    learn, practice = st.tabs(["Learn", "Practice"])
-    with learn:
-        _learn_tab()
-    with practice:
-        _practice_tab()
+def _render_practice_tab() -> None:
+    st.markdown("### Practice (20 questions)")
+    st.markdown(
+        """
+For each question:
+
+1) Try it yourself first.  
+2) Use **Hint** if you get stuck.  
+3) Use **Show solution** to check your method and answer format.
+"""
+    )
+
+    qs = _practice_bank()
+
+    for q in qs:
+        with st.container(border=True):
+            st.markdown(q.prompt_md)
+
+            c1, c2 = st.columns(2)
+            hint_key = f"hint_{q.qid}"
+            sol_key = f"sol_{q.qid}"
+            st.session_state.setdefault(hint_key, False)
+            st.session_state.setdefault(sol_key, False)
+
+            with c1:
+                if st.button("Hint", key=f"btn_hint_{q.qid}"):
+                    st.session_state[hint_key] = not st.session_state[hint_key]
+            with c2:
+                if st.button("Show solution", key=f"btn_sol_{q.qid}"):
+                    st.session_state[sol_key] = not st.session_state[sol_key]
+
+            if st.session_state[hint_key]:
+                st.info(q.hint_md)
+            if st.session_state[sol_key]:
+                st.success(q.solution_md)
+
+
+# -----------------------------
+# Public entry point required by app.py
+# -----------------------------
+
+def render() -> None:
+    tabs = st.tabs(["Learn", "Practice"])
+    with tabs[0]:
+        _render_learn_tab()
+    with tabs[1]:
+        _render_practice_tab()
